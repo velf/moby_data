@@ -1,0 +1,3269 @@
+---
+title: "Margins"
+output: html_notebook
+---
+
+Libraries
+# read in libraries
+```{r, results='hide'}
+util_libraries <- c("foreign", "reshape2", "stargazer", "arm", "plyr", "tidyverse", "stringr", "qdapRegex", "GGally", "progress", "pracma", "lubridate", "DescTools", "Matrix.utils", "irr", "psych", 'gtools')
+vis_libraries  <- c("ggplot2", "ggrepel", "grid", "gridExtra", "RColorBrewer", "scales", "corrplot", "ggeffects", "cowplot", "plot.matrix", "corrgram", "ggnetwork", "vioplot", "dotwhisker", "sjPlot", "sjlabelled", "sjmisc")
+stat_libraries <- c("network", "sna", "igraph", "moments", "nortest", "MASS", "randomForest", "sandwich", "lmtest", "gmodels", "margins", "sampleSelection", "pROC", "pscl",  "pwr", "relaimpo", "lme4", "plm", "caret", "ResourceSelection", "rvest", "cluster", "factoextra", "outliers", "acss", 'asbio','akima', 'plotly', 'factoextra', 'interactions')
+
+#install.packages(util_libraries)
+#install.packages(vis_libraries)
+#install.packages(stat_libraries)
+
+for (l in 1:length(util_libraries)){ library(util_libraries[l], character.only = TRUE)}
+for (l in 1:length(vis_libraries)){ library(vis_libraries[l], character.only = TRUE)}
+for (l in 1:length(stat_libraries)){ library(stat_libraries[l], character.only = TRUE)}
+```
+
+Graph theme set
+```{r}
+theme_set(theme_bw())
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+```
+
+```{r}
+library(robustbase)
+library(tidyverse)
+library(sandwich)
+library(lmtest)
+library(modelr)
+library(broom)
+library(mgcv)
+
+#install.packages("pglm")
+library(pglm)
+```
+
+
+Clear
+```{r}
+rm(list=ls())
+```
+
+
+###Read data
+
+Read file
+```{r}
+moby<-read.csv("moby_data1_17_01_2022.csv")
+full<-read.csv("old_moby_data.csv")
+```
+
+
+
+```{r}
+var_list <- cbind(colnames(moby))
+```
+
+
+
+###----------------
+###  Prepare data
+###----------------
+
+###descriptives
+
+```{r}
+#hist(log(moby$N))
+```
+```{r}
+#hist(moby$female_ratio_net_z)
+```
+
+```{r}
+#hist(moby$game_dist_prev5yr)
+```
+
+
+
+
+```{r}
+#hist(moby$full_inclusion3)
+```
+
+```{r}
+#hist(moby$mixing)
+```
+```{r}
+#hist(moby$weighted_cross_edges_ratio_z)
+```
+
+```{r}
+#hist(moby$female_coreness_log_z)
+```
+
+
+
+
+
+```{r}
+max(moby$game_dist_prev5yr)
+```
+
+```{r}
+library(mgcv)
+```
+
+```{r}
+moby$prop_women2_mc <- moby$prop_women2 - mean(moby$prop_women2, na.rm=T)
+moby$female_ratio_net2_mc <- moby$female_ratio_net2 - mean(moby$female_ratio_net2, na.rm=T)
+
+moby$game_dist_prev5yr_z <- (moby$game_dist_prev5yr-mean(moby$game_dist_prev5yr, na.rm=T))/sd(moby$game_dist_prev5yr)
+moby$prop_women2_z <- (moby$prop_women2-mean(moby$prop_women2, na.rm=T))/sd(moby$prop_women2)
+moby$female_ratio_net2_z <- (moby$female_ratio_net2-mean(moby$female_ratio_net2, na.rm=T))/sd(moby$female_ratio_net2)
+
+
+moby$prop_women2_z <- (moby$prop_women2-min(moby$prop_women2, na.rm=T))/sd(moby$prop_women2)
+moby$female_ratio_net2_z <- (moby$female_ratio_net2-min(moby$female_ratio_net2, na.rm=T))/sd(moby$female_ratio_net2)
+
+moby$propw_x_conn <- moby$prop_women2*moby$female_ratio_net2
+moby$propw_x_conn_z <- moby$prop_women2_z*moby$female_ratio_net2_z
+
+x=moby$prop_women2_z
+y=moby$female_ratio_net2_z
+z=moby$propw_x_conn_z
+
+#PLOT
+fig1<- plot_ly() %>% 
+  add_markers(x = ~moby$prop_women2_z, y=~moby$female_ratio_net2_z, z=moby$propw_x_conn_z, size=7, color='red')
+
+#fig1
+```
+
+
+
+#MODELS
+
+
+```{r}
+#rel_imp_m_conencting <- calc.relimp(conencting,type=c("lmg"), rela=TRUE)
+#print("lmg relative importance metrics")
+#round((cbind(rel_imp_m_conencting$lmg)), digits=3)
+```
+
+
+```{r, message=FALSE, warning = FALSE}
+#developer firm level aggregation
+moby_dev_firm_level <- aggregate(moby, list(dev_firm = moby$org_dev), mean)
+```
+
+
+
+##Without inclusion
+mixing
+```{r}
+#standardized variables
+moby$game_dist_prev5yr_z <- (moby$game_dist_prev5yr-min(moby$game_dist_prev5yr, na.rm=T))/sd(moby$game_dist_prev5yr)
+moby$prop_women2_z <- (moby$prop_women2-min(moby$prop_women2, na.rm=T))/sd(moby$prop_women2)
+moby$blau2_z <- (moby$blau2-min(moby$blau2, na.rm=T))/sd(moby$blau2)
+
+
+moby_dev_firm_level$game_dist_prev5yr_z <- (moby_dev_firm_level$game_dist_prev5yr-min(moby_dev_firm_level$game_dist_prev5yr, na.rm=T))/sd(moby_dev_firm_level$game_dist_prev5yr)
+moby_dev_firm_level$prop_women2_z <- (moby_dev_firm_level$prop_women2-min(moby_dev_firm_level$prop_women2, na.rm=T))/sd(moby_dev_firm_level$prop_women2)
+moby_dev_firm_level$blau2_z <- (moby_dev_firm_level$blau2-min(moby_dev_firm_level$blau2, na.rm=T))/sd(moby_dev_firm_level$blau2)
+
+#basic model
+without_inclusion <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+#standardized model
+without_inclusion_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+
+#fixed effects for developer firm
+
+without_inclusion_fe <- plm(
+  game_dist_prev5yr ~
+    blau2 +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby,
+  index="org_dev",
+  model="within"
+)
+
+
+
+
+#fixed effects model with dummies
+
+org_dev_list <- table(moby$org_dev)
+org_dev_list_repeats <- org_dev_list[org_dev_list>1]
+org_dev_list_repeats_list <- as.numeric(names(org_dev_list_repeats))
+org_dev_list_nonrepeats <- org_dev_list[org_dev_list==1]
+org_dev_list_nonrepeats_list <- as.numeric(names(org_dev_list_nonrepeats))
+
+delete_index <- match(org_dev_list_nonrepeats_list, moby$org_dev)
+
+moby_repeat_devs <- moby[-delete_index,]
+
+without_inclusion_fe2 <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    as.factor(org_dev) +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+  ,
+  data = moby_repeat_devs
+)
+
+
+
+#developer firm level model
+
+without_inclusion_aggr <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+without_inclusion_aggr_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+# Adjust standard errors
+cov1         <- vcovHC(without_inclusion, type = "HC1")
+without_inclusion_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(without_inclusion_z, type = "HC1")
+without_inclusion_z_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(without_inclusion_fe, type = "HC1")
+without_inclusion_fe_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(without_inclusion_aggr, type = "HC1")
+without_inclusion_aggr_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(without_inclusion_aggr_z, type = "HC1")
+without_inclusion_aggr_z_robust_se    <- sqrt(diag(cov1))
+
+
+# Stargazer output (with and without RSE)
+stargazer(without_inclusion,
+          column.labels='Base model',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, without_inclusion_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(without_inclusion_z,
+          column.labels='Std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, without_inclusion_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(without_inclusion_fe,
+          column.labels='Dev firm FE',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, without_inclusion_fe_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(without_inclusion_aggr,
+          column.labels='Dev firm level',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, without_inclusion_aggr_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(without_inclusion_aggr_z,
+          column.labels='Dev firm level std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, without_inclusion_aggr_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+```
+
+
+
+
+##Mixing
+mixing
+```{r}
+moby$mixing <- moby$assortativity_rev_z
+moby_dev_firm_level$mixing <- moby_dev_firm_level$assortativity_rev_z
+
+#standardized variables
+moby$game_dist_prev5yr_z <- (moby$game_dist_prev5yr-min(moby$game_dist_prev5yr, na.rm=T))/sd(moby$game_dist_prev5yr)
+moby$prop_women2_z <- (moby$prop_women2-min(moby$prop_women2, na.rm=T))/sd(moby$prop_women2)
+moby$mixing_z <- (moby$mixing-min(moby$mixing, na.rm=T))/sd(moby$mixing)
+moby$blau2_z <- (moby$blau2-min(moby$blau2, na.rm=T))/sd(moby$blau2)
+
+
+moby_dev_firm_level$game_dist_prev5yr_z <- (moby_dev_firm_level$game_dist_prev5yr-min(moby_dev_firm_level$game_dist_prev5yr, na.rm=T))/sd(moby_dev_firm_level$game_dist_prev5yr)
+moby_dev_firm_level$prop_women2_z <- (moby_dev_firm_level$prop_women2-min(moby_dev_firm_level$prop_women2, na.rm=T))/sd(moby_dev_firm_level$prop_women2)
+moby_dev_firm_level$mixing_z <- (moby_dev_firm_level$mixing-min(moby_dev_firm_level$mixing, na.rm=T))/sd(moby_dev_firm_level$mixing)
+moby_dev_firm_level$blau2_z <- (moby_dev_firm_level$blau2-min(moby_dev_firm_level$blau2, na.rm=T))/sd(moby_dev_firm_level$blau2)
+
+#basic model
+mixing <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    mixing +
+    blau2 * mixing +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+#standardized model
+mixing_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    mixing_z +
+    blau2_z * mixing_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+
+#fixed effects for developer firm
+
+mixing_fe <- plm(
+  game_dist_prev5yr ~
+    blau2 +
+    mixing +
+    blau2 * mixing +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby,
+  index="org_dev",
+  model="within"
+)
+
+
+
+
+#fixed effects model with dummies
+
+org_dev_list <- table(moby$org_dev)
+org_dev_list_repeats <- org_dev_list[org_dev_list>1]
+org_dev_list_repeats_list <- as.numeric(names(org_dev_list_repeats))
+org_dev_list_nonrepeats <- org_dev_list[org_dev_list==1]
+org_dev_list_nonrepeats_list <- as.numeric(names(org_dev_list_nonrepeats))
+
+delete_index <- match(org_dev_list_nonrepeats_list, moby$org_dev)
+
+moby_repeat_devs <- moby[-delete_index,]
+
+mixing_fe2 <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    mixing +
+    blau2 * mixing +
+    as.factor(org_dev) +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+  ,
+  data = moby_repeat_devs
+)
+
+
+
+#developer firm level model
+
+mixing_aggr <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    mixing +
+    blau2 * mixing +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+mixing_aggr_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    mixing_z +
+    blau2_z * mixing_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+# Adjust standard errors
+cov1         <- vcovHC(mixing, type = "HC1")
+mixing_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(mixing_z, type = "HC1")
+mixing_z_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(mixing_fe, type = "HC1")
+mixing_fe_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(mixing_aggr, type = "HC1")
+mixing_aggr_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(mixing_aggr_z, type = "HC1")
+mixing_aggr_z_robust_se    <- sqrt(diag(cov1))
+
+
+# Stargazer output (with and without RSE)
+stargazer(mixing,
+          column.labels='Base model',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, mixing_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(mixing_z,
+          column.labels='Std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, mixing_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(mixing_fe,
+          column.labels='Dev firm FE',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, mixing_fe_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(mixing_aggr,
+          column.labels='Dev firm level',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, mixing_aggr_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(mixing_aggr_z,
+          column.labels='Dev firm level std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "mixing*"), 
+          se = list(NULL, mixing_aggr_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+```
+
+
+
+
+
+##Bonding
+weighted_cross_edges_ratio_z
+```{r}
+moby$bonding <- moby$weighted_cross_edges_ratio_z
+moby_dev_firm_level$bonding <- moby_dev_firm_level$weighted_cross_edges_ratio_z
+
+#standardized variables
+moby$game_dist_prev5yr_z <- (moby$game_dist_prev5yr-min(moby$game_dist_prev5yr, na.rm=T))/sd(moby$game_dist_prev5yr)
+moby$prop_women2_z <- (moby$prop_women2-min(moby$prop_women2, na.rm=T))/sd(moby$prop_women2)
+moby$bonding_z <- (moby$bonding-min(moby$bonding, na.rm=T))/sd(moby$bonding)
+moby$blau2_z <- (moby$blau2-min(moby$blau2, na.rm=T))/sd(moby$blau2)
+
+
+moby_dev_firm_level$game_dist_prev5yr_z <- (moby_dev_firm_level$game_dist_prev5yr-min(moby_dev_firm_level$game_dist_prev5yr, na.rm=T))/sd(moby_dev_firm_level$game_dist_prev5yr)
+moby_dev_firm_level$prop_women2_z <- (moby_dev_firm_level$prop_women2-min(moby_dev_firm_level$prop_women2, na.rm=T))/sd(moby_dev_firm_level$prop_women2)
+moby_dev_firm_level$bonding_z <- (moby_dev_firm_level$bonding-min(moby_dev_firm_level$bonding, na.rm=T))/sd(moby_dev_firm_level$bonding)
+moby_dev_firm_level$blau2_z <- (moby_dev_firm_level$blau2-min(moby_dev_firm_level$blau2, na.rm=T))/sd(moby_dev_firm_level$blau2)
+
+#basic model
+bonding <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    bonding +
+    blau2 * bonding +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+#standardized model
+bonding_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    bonding_z +
+    blau2_z * bonding_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+
+#fixed effects for developer firm
+
+bonding_fe <- plm(
+  game_dist_prev5yr ~
+    blau2 +
+    bonding +
+    blau2 * bonding +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby,
+  index="org_dev",
+  model="within"
+)
+
+
+
+
+#fixed effects model with dummies
+
+org_dev_list <- table(moby$org_dev)
+org_dev_list_repeats <- org_dev_list[org_dev_list>1]
+org_dev_list_repeats_list <- as.numeric(names(org_dev_list_repeats))
+org_dev_list_nonrepeats <- org_dev_list[org_dev_list==1]
+org_dev_list_nonrepeats_list <- as.numeric(names(org_dev_list_nonrepeats))
+
+delete_index <- match(org_dev_list_nonrepeats_list, moby$org_dev)
+
+moby_repeat_devs <- moby[-delete_index,]
+
+bonding_fe2 <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    bonding +
+    blau2 * bonding +
+    as.factor(org_dev) +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+  ,
+  data = moby_repeat_devs
+)
+
+
+
+#developer firm level model
+
+bonding_aggr <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    bonding +
+    blau2 * bonding +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+bonding_aggr_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    bonding_z +
+    blau2_z * bonding_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+# Adjust standard errors
+cov1         <- vcovHC(bonding, type = "HC1")
+bonding_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(bonding_z, type = "HC1")
+bonding_z_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(bonding_fe, type = "HC1")
+bonding_fe_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(bonding_aggr, type = "HC1")
+bonding_aggr_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(bonding_aggr_z, type = "HC1")
+bonding_aggr_z_robust_se    <- sqrt(diag(cov1))
+
+
+# Stargazer output (with and without RSE)
+stargazer(bonding,
+          column.labels='Base model',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "bonding*"), 
+          se = list(NULL, bonding_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(bonding_z,
+          column.labels='Std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "bonding*"), 
+          se = list(NULL, bonding_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(bonding_fe,
+          column.labels='Dev firm FE',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "bonding*"), 
+          se = list(NULL, bonding_fe_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(bonding_aggr,
+          column.labels='Dev firm level',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "bonding*"), 
+          se = list(NULL, bonding_aggr_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(bonding_aggr_z,
+          column.labels='Dev firm level std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "bonding*"), 
+          se = list(NULL, bonding_aggr_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+```
+
+
+
+
+
+
+
+##Incorporating
+female_coreness_log_z
+```{r}
+moby$incorporating <- moby$female_coreness_log_z
+moby_dev_firm_level$incorporating <- moby_dev_firm_level$female_coreness_log_z
+
+#standardized variables
+moby$game_dist_prev5yr_z <- (moby$game_dist_prev5yr-min(moby$game_dist_prev5yr, na.rm=T))/sd(moby$game_dist_prev5yr)
+moby$prop_women2_z <- (moby$prop_women2-min(moby$prop_women2, na.rm=T))/sd(moby$prop_women2)
+moby$incorporating_z <- (moby$incorporating-min(moby$incorporating, na.rm=T))/sd(moby$incorporating)
+moby$blau2_z <- (moby$blau2-min(moby$blau2, na.rm=T))/sd(moby$blau2)
+
+
+moby_dev_firm_level$game_dist_prev5yr_z <- (moby_dev_firm_level$game_dist_prev5yr-min(moby_dev_firm_level$game_dist_prev5yr, na.rm=T))/sd(moby_dev_firm_level$game_dist_prev5yr)
+moby_dev_firm_level$prop_women2_z <- (moby_dev_firm_level$prop_women2-min(moby_dev_firm_level$prop_women2, na.rm=T))/sd(moby_dev_firm_level$prop_women2)
+moby_dev_firm_level$incorporating_z <- (moby_dev_firm_level$incorporating-min(moby_dev_firm_level$incorporating, na.rm=T))/sd(moby_dev_firm_level$incorporating)
+moby_dev_firm_level$blau2_z <- (moby_dev_firm_level$blau2-min(moby_dev_firm_level$blau2, na.rm=T))/sd(moby_dev_firm_level$blau2)
+
+#basic model
+incorporating <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    incorporating +
+    blau2 * incorporating +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+#standardized model
+incorporating_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    incorporating_z +
+    blau2_z * incorporating_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+
+#fixed effects for developer firm
+
+incorporating_fe <- plm(
+  game_dist_prev5yr ~
+    blau2 +
+    incorporating +
+    blau2 * incorporating +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby,
+  index="org_dev",
+  model="within"
+)
+
+
+
+
+#fixed effects model with dummies
+
+org_dev_list <- table(moby$org_dev)
+org_dev_list_repeats <- org_dev_list[org_dev_list>1]
+org_dev_list_repeats_list <- as.numeric(names(org_dev_list_repeats))
+org_dev_list_nonrepeats <- org_dev_list[org_dev_list==1]
+org_dev_list_nonrepeats_list <- as.numeric(names(org_dev_list_nonrepeats))
+
+delete_index <- match(org_dev_list_nonrepeats_list, moby$org_dev)
+
+moby_repeat_devs <- moby[-delete_index,]
+
+incorporating_fe2 <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    incorporating +
+    blau2 * incorporating +
+    as.factor(org_dev) +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+  ,
+  data = moby_repeat_devs
+)
+
+
+
+#developer firm level model
+
+incorporating_aggr <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    incorporating +
+    blau2 * incorporating +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+incorporating_aggr_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    incorporating_z +
+    blau2_z * incorporating_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+# Adjust standard errors
+cov1         <- vcovHC(incorporating, type = "HC1")
+incorporating_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(incorporating_z, type = "HC1")
+incorporating_z_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(incorporating_fe, type = "HC1")
+incorporating_fe_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(incorporating_aggr, type = "HC1")
+incorporating_aggr_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(incorporating_aggr_z, type = "HC1")
+incorporating_aggr_z_robust_se    <- sqrt(diag(cov1))
+
+
+# Stargazer output (with and without RSE)
+stargazer(incorporating,
+          column.labels='Base model',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "incorporating*"), 
+          se = list(NULL, incorporating_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(incorporating_z,
+          column.labels='Std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "incorporating*"), 
+          se = list(NULL, incorporating_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(incorporating_fe,
+          column.labels='Dev firm FE',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "incorporating*"), 
+          se = list(NULL, incorporating_fe_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(incorporating_aggr,
+          column.labels='Dev firm level',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "incorporating*"), 
+          se = list(NULL, incorporating_aggr_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(incorporating_aggr_z,
+          column.labels='Dev firm level std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "incorporating*"), 
+          se = list(NULL, incorporating_aggr_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+```
+
+
+
+##Combined
+
+```{r}
+moby$combined <- moby$mixing_z*moby$bonding_z*moby$incorporating_z
+moby_dev_firm_level$combined <- moby_dev_firm_level$mixing_z*moby_dev_firm_level$bonding_z*moby_dev_firm_level$incorporating_z
+
+#standardized variables
+moby$game_dist_prev5yr_z <- (moby$game_dist_prev5yr-min(moby$game_dist_prev5yr, na.rm=T))/sd(moby$game_dist_prev5yr)
+moby$prop_women2_z <- (moby$prop_women2-min(moby$prop_women2, na.rm=T))/sd(moby$prop_women2)
+moby$combined_z <- (moby$combined-min(moby$combined, na.rm=T))/sd(moby$combined)
+moby$blau2_z <- (moby$blau2-min(moby$blau2, na.rm=T))/sd(moby$blau2)
+
+
+moby_dev_firm_level$game_dist_prev5yr_z <- (moby_dev_firm_level$game_dist_prev5yr-min(moby_dev_firm_level$game_dist_prev5yr, na.rm=T))/sd(moby_dev_firm_level$game_dist_prev5yr)
+moby_dev_firm_level$prop_women2_z <- (moby_dev_firm_level$prop_women2-min(moby_dev_firm_level$prop_women2, na.rm=T))/sd(moby_dev_firm_level$prop_women2)
+moby_dev_firm_level$combined_z <- (moby_dev_firm_level$combined-min(moby_dev_firm_level$combined, na.rm=T))/sd(moby_dev_firm_level$combined)
+moby_dev_firm_level$blau2_z <- (moby_dev_firm_level$blau2-min(moby_dev_firm_level$blau2, na.rm=T))/sd(moby_dev_firm_level$blau2)
+
+#basic model
+combined <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    combined +
+    blau2 * combined +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+#standardized model
+combined_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    combined_z +
+    blau2_z * combined_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby
+)
+
+
+#fixed effects for developer firm
+
+combined_fe <- plm(
+  game_dist_prev5yr ~
+    blau2 +
+    combined +
+    blau2 * combined +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby,
+  index="org_dev",
+  model="within"
+)
+
+
+
+
+#fixed effects model with dummies
+
+org_dev_list <- table(moby$org_dev)
+org_dev_list_repeats <- org_dev_list[org_dev_list>1]
+org_dev_list_repeats_list <- as.numeric(names(org_dev_list_repeats))
+org_dev_list_nonrepeats <- org_dev_list[org_dev_list==1]
+org_dev_list_nonrepeats_list <- as.numeric(names(org_dev_list_nonrepeats))
+
+delete_index <- match(org_dev_list_nonrepeats_list, moby$org_dev)
+
+moby_repeat_devs <- moby[-delete_index,]
+
+combined_fe2 <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    combined +
+    blau2 * combined +
+    as.factor(org_dev) +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+  ,
+  data = moby_repeat_devs
+)
+
+
+
+#developer firm level model
+
+combined_aggr <- lm(
+  game_dist_prev5yr ~
+    blau2 +
+    combined +
+    blau2 * combined +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+combined_aggr_z <- lm(
+  game_dist_prev5yr_z ~
+    blau2_z +
+    combined_z +
+    blau2_z * combined_z +
+    N +
+    newbies_prop +
+    games_tenure +
+    star_prior +
+    hold_single_firm +
+    ratio_core_z +
+    num_countries +
+    plat2 + plat7 + plat12 + plat13 + plat14 + plat15 +
+    year13 + year15 + year16 + year17 + year18 + year19 + year20 + year21 + year22 + year23 + year24 + year25 + year26 + year27 + year28
+    ,
+  data = moby_dev_firm_level
+)
+
+
+# Adjust standard errors
+cov1         <- vcovHC(combined, type = "HC1")
+combined_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(combined_z, type = "HC1")
+combined_z_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(combined_fe, type = "HC1")
+combined_fe_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(combined_aggr, type = "HC1")
+combined_aggr_robust_se    <- sqrt(diag(cov1))
+
+cov1         <- vcovHC(combined_aggr_z, type = "HC1")
+combined_aggr_z_robust_se    <- sqrt(diag(cov1))
+
+
+# Stargazer output (with and without RSE)
+stargazer(combined,
+          column.labels='Base model',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "combined*"), 
+          se = list(NULL, combined_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(combined_z,
+          column.labels='Std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "combined*"), 
+          se = list(NULL, combined_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(combined_fe,
+          column.labels='Dev firm FE',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "combined*"), 
+          se = list(NULL, combined_fe_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(combined_aggr,
+          column.labels='Dev firm level',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "combined*"), 
+          se = list(NULL, combined_aggr_robust_se),
+          omit.stat = c("f", "ser")
+          )
+
+stargazer(combined_aggr_z,
+          column.labels='Dev firm level std',
+          dep.var.caption = "",
+          type="text", 
+          keep = c("blau*", "combined*"), 
+          se = list(NULL, combined_aggr_z_robust_se),
+          omit.stat = c("f", "ser")
+          )
+```
+
+
+
+
+```{r}
+bptest(combined_z)
+```
+This test shows that we can reject the null that the variance of the residuals is constant, thus heteroskedacity is present. To get the correct standard errors, we can use the vcovHC() function from the {sandwich} package (hence the choice for the header picture of this post):
+
+
+###Combined marginsplot with Robust SE
+###Synthetic data file for male-female data=
+
+```{r}
+create_synt <- function(model_object, data_file) {
+  # this is a function that creates synthetic data
+  var_names <- names(model_object$coefficients)
+  #delete intercept
+  var_sel <- grepl("ntercept", var_names) #small and big i
+  var_names <- var_names[!var_sel]
+  #delete squared term
+  var_sel <- grepl("2)", var_names)
+  var_names <- var_names[!var_sel]
+
+  #save interaction
+  var_sel <- grepl(":", var_names)
+  var_inter_names <- var_names[var_sel]
+  
+  var_inter_names <- unique(unlist(strsplit(var_inter_names, "[:]")))
+  
+  #delete interactions
+  var_sel <- grepl(":", var_names)
+  var_names <- var_names[!var_sel]
+  
+  #delete variables involved in interactions
+  for (i in 1:length(var_inter_names)){
+  var_names <- var_names[var_names!=var_inter_names[i]]
+  }
+  
+  #results
+  cbind(var_inter_names)
+  cbind(var_names)
+  
+  #min and max values for interaction variables
+  inter_min_vec <- array(0, dim=c(1,length(var_inter_names)))
+  
+  for (v in 1:length(var_inter_names)){
+    inter_min_vec[v] <- min(as.numeric(unlist(data_file[var_inter_names[v]])), na.rm=TRUE)
+  }
+  
+  inter_max_vec <- array(0, dim=c(1,length(var_inter_names)))
+  
+  for (v in 1:length(var_inter_names)){
+    inter_max_vec[v] <- max(as.numeric(unlist(data_file[var_inter_names[v]])), na.rm=TRUE)
+  }
+
+
+  #interaction grid settings
+  var1_from <- inter_min_vec[1]
+  var1_to   <- inter_max_vec[1]
+  var1_step <- (inter_max_vec[1]-inter_min_vec[1])/100
+  
+  #var1_from <- 0
+  #var1_to   <- 1
+  #var1_step <- 0.01
+  
+  var2_from <- inter_min_vec[2]
+  var2_to   <- inter_max_vec[2]
+  var2_step <- (inter_max_vec[2]-inter_min_vec[2])/100
+  
+  
+  #number of variables and interactions
+  n_inter_vars <- length(var_inter_names)
+  n_vars <- length(var_names)
+  
+  #interaction combination
+  inter_grid <- expand.grid(
+                       seq(from = var1_from, to = var1_to, by = var1_step),
+                       seq(from = var2_from, to = var2_to, by = var2_step)
+                       )
+  
+  #fixing controls at the mean
+  means_vec <- array(0, dim=c(1,n_vars))
+  
+  for (v in 1:n_vars){
+    means_vec[v] <- mean(as.numeric(unlist(data_file[var_names[v]])), na.rm=TRUE)
+  }
+  
+  #assembling the synthetic datafile
+  n_rows <- dim(inter_grid)[1]
+  means_grid <- matrix(means_vec,nrow=n_rows,ncol=length(means_vec),byrow=TRUE)
+  
+  syn_data <- data.frame(cbind(inter_grid, means_grid))
+  names(syn_data) <- c(var_inter_names,var_names)
+  #with robust SE
+  predvals <- predict(model_object, newdata=syn_data, se.fit = TRUE, vcov.fun = "vcovHC", vcov.type = "HC0")
+  #withour robust SE
+  #predvals <- predict(model_object, newdata=syn_data, se.fit = TRUE)
+
+  
+  syn_data$ols_pred <- predvals$fit
+  syn_data$ols_low <- (predvals$fit - 1.96 * predvals$se.fit)
+  syn_data$ols_up <- (predvals$fit + 1.96 * predvals$se.fit)
+  
+  return(syn_data)
+  }
+```
+
+
+
+
+```{r}
+create_synt_factor <- function(model_object, data_file) {
+  # this is a function that creates synthetic data when there is a fixed effect factor
+
+  # this is a function that creates synthetic data
+  var_names <- names(model_object$coefficients)
+  #delete intercept
+  var_sel <- grepl("ntercept", var_names) #small and big i
+  var_names <- var_names[!var_sel]
+  #delete squared term
+  var_sel <- grepl("2)", var_names)
+  var_names <- var_names[!var_sel]
+
+  #save interaction
+  var_sel <- grepl(":", var_names)
+  var_inter_names <- var_names[var_sel]
+  
+  var_inter_names <- unique(unlist(strsplit(var_inter_names, "[:]")))
+  
+  #delete interactions
+  var_sel <- grepl(":", var_names)
+  var_names <- var_names[!var_sel]
+  
+  #delete variables involved in interactions
+  for (i in 1:length(var_inter_names)){
+  var_names <- var_names[var_names!=var_inter_names[i]]
+  }
+  
+  #identify factor
+  var_sel <- grepl("as.factor*", var_names)
+  var_factor_coefs <- var_names[var_sel]
+  var_factor <- sub("\\).*", "", sub(".*\\(", "", var_factor_coefs))[1]
+
+  #get the first factor level
+  pos_start <- which(strsplit(var_factor_coefs[1], "")[[1]] == ")")+1
+  pos_end <- nchar(var_factor_coefs[1])
+  var_factor_level <- as.numeric(substr(var_factor_coefs[1], pos_start, pos_end))
+  
+  #remove factors from variable list
+  var_names <- var_names[!var_sel]
+  
+  #results
+  cbind(var_inter_names)
+  cbind(var_names)
+  
+  #min and max values for interaction variables
+  inter_min_vec <- array(0, dim=c(1,length(var_inter_names)))
+  
+  for (v in 1:length(var_inter_names)){
+    inter_min_vec[v] <- min(as.numeric(unlist(data_file[var_inter_names[v]])), na.rm=TRUE)
+  }
+  
+  inter_max_vec <- array(0, dim=c(1,length(var_inter_names)))
+  
+  for (v in 1:length(var_inter_names)){
+    inter_max_vec[v] <- max(as.numeric(unlist(data_file[var_inter_names[v]])), na.rm=TRUE)
+  }
+
+
+  #interaction grid settings
+  var1_from <- inter_min_vec[1]
+  var1_to   <- inter_max_vec[1]
+  var1_step <- (inter_max_vec[1]-inter_min_vec[1])/100
+  
+  #var1_from <- 0
+  #var1_to   <- 1
+  #var1_step <- 0.01
+  
+  var2_from <- inter_min_vec[2]
+  var2_to   <- inter_max_vec[2]
+  var2_step <- (inter_max_vec[2]-inter_min_vec[2])/100
+  
+  
+  #number of variables and interactions
+  n_inter_vars <- length(var_inter_names)
+  n_vars <- length(var_names)
+  
+  #interaction combination
+  inter_grid <- expand.grid(
+                       seq(from = var1_from, to = var1_to, by = var1_step),
+                       seq(from = var2_from, to = var2_to, by = var2_step)
+                       )
+  
+  #fixing controls at the mean
+  means_vec <- array(0, dim=c(1,n_vars))
+  
+  for (v in 1:n_vars){
+    means_vec[v] <- mean(as.numeric(unlist(data_file[var_names[v]])), na.rm=TRUE)
+  }
+  
+  means_vec <- c(means_vec, var_factor_level)
+  #assembling the synthetic datafile
+  n_rows <- dim(inter_grid)[1]
+  means_grid <- matrix(means_vec,nrow=n_rows,ncol=length(means_vec),byrow=TRUE)
+  
+  syn_data <- data.frame(cbind(inter_grid, means_grid))
+  names(syn_data) <- c(var_inter_names,var_names, var_factor)
+  #with robust SE
+  predvals <- predict(model_object, newdata=syn_data, se.fit = TRUE, vcov.fun = "vcovHC", vcov.type = "HC0")
+  #withour robust SE
+  #predvals <- predict(model_object, newdata=syn_data, se.fit = TRUE)
+
+  
+  syn_data$ols_pred <- predvals$fit
+  syn_data$ols_low <- (predvals$fit - 1.96 * predvals$se.fit)
+  syn_data$ols_up <- (predvals$fit + 1.96 * predvals$se.fit)
+  
+  return(syn_data)
+  }
+```
+
+
+```{r}
+min(moby$mixing, na.rm = T)
+max(moby$mixing, na.rm = T)
+min(moby$bonding, na.rm = T)
+max(moby$bonding, na.rm = T)
+min(moby$incorporating, na.rm = T)
+max(moby$incorporating, na.rm = T)
+```
+
+
+
+```{r}
+syn_data_mixing<-create_synt(mixing,moby)
+syn_data_bonding<-create_synt(bonding,moby)
+syn_data_incorporating<-create_synt(incorporating,moby)
+syn_data_combined<-create_synt(combined,moby)
+
+
+syn_data_mixing_fe<-create_synt_factor(mixing_fe2,moby_repeat_devs)
+syn_data_bonding_fe<-create_synt_factor(bonding_fe2,moby_repeat_devs)
+syn_data_incorporating_fe<-create_synt_factor(incorporating_fe2,moby_repeat_devs)
+syn_data_combined_fe<-create_synt_factor(combined_fe2,moby_repeat_devs)
+
+
+syn_data_mixing_aggr<-create_synt(mixing_aggr,moby_dev_firm_level)
+syn_data_bonding_aggr<-create_synt(bonding_aggr,moby_dev_firm_level)
+syn_data_incorporating_aggr<-create_synt(incorporating_aggr,moby_dev_firm_level)
+syn_data_combined_aggr<-create_synt(combined_aggr,moby_dev_firm_level)
+```
+
+```{r}
+hist(syn_data_combined$ols_pred)
+```
+
+
+# save sy_data out
+```{r}
+write.csv(syn_data_mixing, "synt_data_mixing_blau.csv")
+write.csv(syn_data_bonding, "synt_data_bonding_blau.csv") 
+write.csv(syn_data_incorporating, "synt_data_incorporating_blau.csv") 
+write.csv(syn_data_combined, "synt_data_combined_blau.csv") 
+
+write.csv(syn_data_mixing_aggr, "synt_data_mixing_aggr_blau.csv")
+write.csv(syn_data_bonding_aggr, "synt_data_bonding_aggr_blau.csv") 
+write.csv(syn_data_incorporating_aggr, "synt_data_incorporating_aggr_blau.csv") 
+write.csv(syn_data_combined_aggr, "synt_data_combined_aggr_blau.csv") 
+```
+
+
+```{r}
+write.csv(moby, "moby_march_21.csv")
+write.csv(moby_dev_firm_level, "moby_firm_march_21.csv")
+
+
+```
+
+
+#MOVED TO PYTHON TO CREATE PLOTS
+
+
+
+
+
+
+Margins plot - game level
+```{r, fig.width = 6.6, fig.height = 6.6}
+theme_set(theme_bw())
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+
+mean_diversity <- mean(moby$blau2)
+min_diversity <- min(moby$blau2)
+max_diversity <- max(moby$blau2)
+sd_diversity <- sd(moby$blau2)
+q1_diversity <- quantile(moby$blau2, probs = 0.25)
+q3_diversity <- quantile(moby$blau2, probs = 0.75)
+
+hi_color = "#b4de75"
+lo_color = "#69629a"
+
+
+syn_data_mixing_min <- min(syn_data_mixing$ols_low)
+syn_data_mixing_max <- max(syn_data_mixing$ols_up)
+syn_data_mixing_min_inclusion <- min(syn_data_mixing$mixing)
+syn_data_mixing_max_inclusion <- max(syn_data_mixing$mixing)
+
+syn_data_bonding_min <- min(syn_data_bonding$ols_low)
+syn_data_bonding_max <- max(syn_data_bonding$ols_up)
+syn_data_bonding_min_inclusion <- min(syn_data_bonding$bonding)
+syn_data_bonding_max_inclusion <- max(syn_data_bonding$bonding)
+
+syn_data_incorporating_min <- min(syn_data_incorporating$ols_low)
+syn_data_incorporating_max <- max(syn_data_incorporating$ols_up)
+syn_data_incorporating_min_inclusion <- min(syn_data_incorporating$incorporating)
+syn_data_incorporating_max_inclusion <- max(syn_data_incorporating$incorporating)
+
+syn_data_combined_min <- min(syn_data_combined$ols_low)
+syn_data_combined_max <- max(syn_data_combined$ols_up)
+syn_data_combined_min_inclusion <- min(syn_data_combined$combined)
+syn_data_combined_max_inclusion <- max(syn_data_combined$combined)
+
+global_y_max <- max(c(syn_data_mixing_max, syn_data_bonding_max, syn_data_incorporating_max, syn_data_combined_max))
+global_y_min <- min(c(syn_data_mixing_min, syn_data_bonding_min, syn_data_incorporating_min, syn_data_combined_min))
+
+
+m_top <- 2
+m_left <-0
+m_bottom <- 0
+m_right <- 0
+ts <- 3.2
+tit_s <- 11
+iqr_alpha <- 0.07
+ribbon_alpha <- 0.33
+
+
+mixing_margins <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_mixing[syn_data_mixing$mixing==syn_data_mixing_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_mixing[syn_data_mixing$mixing==syn_data_mixing_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_mixing[syn_data_mixing$mixing==syn_data_mixing_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_mixing[syn_data_mixing$mixing==syn_data_mixing_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="Predicted distinctiveness") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_mixing$blau2, n = 5), 
+                     name="") +
+  
+coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+    annotate(geom="text", x=mean_diversity-0.01,    y=0.88, label="Mean\n Gender\nDiversity", lineheight = .8,  col="black", size=3.2, hjust = 1, alpha = 1) +
+  
+    annotate(geom="text", x=mean_diversity,    y=0.715, label="IQR of \nGender Diversity", lineheight = .8,  col="black", size=3.2, hjust = 0.5, alpha = 1) +
+    annotate("segment", x = q1_diversity, xend = q3_diversity, y = .70, yend = .70, size=0.2, arrow = arrow(ends = "both", angle = 45, length = unit(1,"mm"))) +
+  
+    annotate(geom="text", x=.45,    y=0.845, label="Maximal\nInclusion", lineheight = .8,  col="black", size=3.2, hjust = 1, alpha = 1, angle = 20) +
+    #geom_segment(aes(y=0.85,    x=0.25, yend = 0.81, xend = 0.28),size=0.6, col = hi_color, alpha=0.66, linetype=3) +
+  
+    annotate(geom="text", x=.45,    y=0.777, label="Minimal\nInclusion", lineheight = .8,   col="black", size=3.2, hjust = 1, alpha = 1, angle = -14) +
+    #geom_segment(aes(y=0.72,    x=.25, yend = 0.76, xend = .28),size=0.6, col = lo_color, alpha=0.66, linetype=3) +
+  
+    
+  
+
+  
+  labs(title="Mixing")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,0), "mm")
+            )
+
+
+
+
+bonding_margins <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_bonding[syn_data_bonding$bonding==syn_data_bonding_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_bonding[syn_data_bonding$bonding==syn_data_bonding_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_bonding[syn_data_bonding$bonding==syn_data_bonding_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_bonding[syn_data_bonding$bonding==syn_data_bonding_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_bonding$blau2, n = 5), 
+                     name="") +
+  
+coord_cartesian(ylim = c(0.69, 0.90)) +
+
+  
+  labs(title="Bonding")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+incorporating_margins <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_incorporating[syn_data_incorporating$incorporating==syn_data_incorporating_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_incorporating[syn_data_incorporating$incorporating==syn_data_incorporating_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_incorporating[syn_data_incorporating$incorporating==syn_data_incorporating_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_incorporating[syn_data_incorporating$incorporating==syn_data_incorporating_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="Predicted distinctiveness") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_incorporating$blau2, n = 5), 
+                     name="Gender diversity") +
+  
+  coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+
+  
+  labs(title="Incorporating")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+
+combined_margins <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_combined[syn_data_combined$combined==syn_data_combined_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_combined[syn_data_combined$combined==syn_data_combined_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_combined[syn_data_combined$combined==syn_data_combined_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_combined[syn_data_combined$combined==syn_data_combined_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_combined$blau2, n = 5), 
+                     name="Gender diversity") +
+  
+  coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+
+  
+  labs(title="Combined inclusion")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+
+margins_gamelevel <- grid.arrange(mixing_margins, bonding_margins, incorporating_margins,combined_margins, nrow = 2)
+#margins
+```
+
+
+```{r}
+ggsave("margins_gamelevel_mid.pdf", margins_gamelevel, width = 6.6, height = 6.6)
+ggsave("margins_gamelevel_sm.pdf", margins_gamelevel, width = 4.2, height = 4.2)
+```
+
+predictions for mixing
+```{r}
+print("------min-------")
+data_at_min <- syn_data_mixing[syn_data_mixing$blau2==min(syn_data_mixing$blau2),]
+data_at_min[data_at_min$mixing==1,]$ols_low
+data_at_min[data_at_min$mixing==1,]$ols_pred
+data_at_min[data_at_min$mixing==1,]$ols_up
+print("------q1-------")
+data_at_q1 <- syn_data_mixing[round(syn_data_mixing$blau2, digits=3)==round(q1_diversity, digits = 3),]
+data_at_q1[data_at_q1$mixing==1,]$ols_low
+data_at_q1[data_at_q1$mixing==1,]$ols_pred
+data_at_q1[data_at_q1$mixing==1,]$ols_up
+print("------q3-------")
+data_at_q3 <- syn_data_mixing[round(syn_data_mixing$blau2, digits=3)==round(q3_diversity, digits = 3),]
+data_at_q3[data_at_q3$mixing==1,]$ols_low
+data_at_q3[data_at_q3$mixing==1,]$ols_pred
+data_at_q3[data_at_q3$mixing==1,]$ols_up
+print("------max-------")
+data_at_max <- syn_data_mixing[syn_data_mixing$blau2==max(syn_data_mixing$blau2),]
+data_at_max[data_at_max$mixing==1,]$ols_low
+data_at_max[data_at_max$mixing==1,]$ols_pred
+data_at_max[data_at_max$mixing==1,]$ols_up
+
+data_at_max[data_at_max$mixing==1,]$ols_pred/data_at_min[data_at_min$mixing==1,]$ols_pred
+```
+predictions for bonding
+```{r}
+print("------min-------")
+data_at_min <- syn_data_bonding[syn_data_bonding$blau2==min(syn_data_bonding$blau2),]
+data_at_min[data_at_min$bonding==1,]$ols_low
+data_at_min[data_at_min$bonding==1,]$ols_pred
+data_at_min[data_at_min$bonding==1,]$ols_up
+print("------q1-------")
+data_at_q1 <- syn_data_bonding[round(syn_data_bonding$blau2, digits=3)==round(q1_diversity, digits = 3),]
+data_at_q1[data_at_q1$bonding==1,]$ols_low
+data_at_q1[data_at_q1$bonding==1,]$ols_pred
+data_at_q1[data_at_q1$bonding==1,]$ols_up
+print("------q3-------")
+data_at_q3 <- syn_data_bonding[round(syn_data_bonding$blau2, digits=3)==round(q3_diversity, digits = 3),]
+data_at_q3[data_at_q3$bonding==1,]$ols_low
+data_at_q3[data_at_q3$bonding==1,]$ols_pred
+data_at_q3[data_at_q3$bonding==1,]$ols_up
+print("------max-------")
+data_at_max <- syn_data_bonding[syn_data_bonding$blau2==max(syn_data_bonding$blau2),]
+data_at_max[data_at_max$bonding==1,]$ols_low
+data_at_max[data_at_max$bonding==1,]$ols_pred
+data_at_max[data_at_max$bonding==1,]$ols_up
+
+data_at_max[data_at_max$bonding==1,]$ols_pred/data_at_min[data_at_min$bonding==1,]$ols_pred
+```
+predictions for incorporating
+```{r}
+print("------min-------")
+data_at_min <- syn_data_incorporating[syn_data_incorporating$blau2==min(syn_data_incorporating$blau2),]
+data_at_min[data_at_min$incorporating==max(data_at_min$incorporating),]$ols_low
+data_at_min[data_at_min$incorporating==max(data_at_min$incorporating),]$ols_pred
+data_at_min[data_at_min$incorporating==max(data_at_min$incorporating),]$ols_up
+print("------q1-------")
+data_at_q1 <- syn_data_incorporating[round(syn_data_incorporating$blau2, digits=3)==round(q1_diversity, digits = 3),]
+data_at_q1[data_at_q1$incorporating==max(data_at_min$incorporating),]$ols_low
+data_at_q1[data_at_q1$incorporating==max(data_at_min$incorporating),]$ols_pred
+data_at_q1[data_at_q1$incorporating==max(data_at_min$incorporating),]$ols_up
+print("------q3-------")
+data_at_q3 <- syn_data_incorporating[round(syn_data_incorporating$blau2, digits=3)==round(q3_diversity, digits = 3),]
+data_at_q3[data_at_q3$incorporating==max(data_at_min$incorporating),]$ols_low
+data_at_q3[data_at_q3$incorporating==max(data_at_min$incorporating),]$ols_pred
+data_at_q3[data_at_q3$incorporating==max(data_at_min$incorporating),]$ols_up
+print("------max-------")
+data_at_max <- syn_data_incorporating[syn_data_incorporating$blau2==max(syn_data_incorporating$blau2),]
+data_at_max[data_at_max$incorporating==max(data_at_min$incorporating),]$ols_low
+data_at_max[data_at_max$incorporating==max(data_at_min$incorporating),]$ols_pred
+data_at_max[data_at_max$incorporating==max(data_at_min$incorporating),]$ols_up
+
+data_at_max[data_at_max$incorporating==max(data_at_min$incorporating),]$ols_pred/data_at_min[data_at_min$incorporating==max(data_at_min$incorporating),]$ols_pred
+```
+
+predictions for combined
+```{r}
+print("------min-------")
+data_at_min <- syn_data_combined[syn_data_combined$blau2==min(syn_data_combined$blau2),]
+data_at_min[data_at_min$combined==max(data_at_min$combined),]$ols_low
+data_at_min[data_at_min$combined==max(data_at_min$combined),]$ols_pred
+data_at_min[data_at_min$combined==max(data_at_min$combined),]$ols_up
+print("------q1-------")
+data_at_q1 <- syn_data_incorporating[round(syn_data_incorporating$blau2, digits=3)==round(q1_diversity, digits = 3),]
+data_at_q1[data_at_q1$combined==max(data_at_min$combined),]$ols_low
+data_at_q1[data_at_q1$combined==max(data_at_min$combined),]$ols_pred
+data_at_q1[data_at_q1$combined==max(data_at_min$combined),]$ols_up
+print("------q3-------")
+data_at_q3 <- syn_data_combined[round(syn_data_incorporating$blau2, digits=3)==round(q3_diversity, digits = 3),]
+data_at_q3[data_at_q3$combined==max(data_at_min$combined),]$ols_low
+data_at_q3[data_at_q3$combinedg==max(data_at_min$combined),]$ols_pred
+data_at_q3[data_at_q3$combined==max(data_at_min$combined),]$ols_up
+print("------max-------")
+data_at_max <- syn_data_combined[syn_data_incorporating$blau2==max(syn_data_incorporating$blau2),]
+data_at_max[data_at_max$combined==max(data_at_min$combined),]$ols_low
+data_at_max[data_at_max$combined==max(data_at_min$combined),]$ols_pred
+data_at_max[data_at_max$combined==max(data_at_min$combined),]$ols_up
+
+data_at_max[data_at_max$combined==max(data_at_min$combined),]$ols_pred/data_at_min[data_at_min$combined==max(data_at_min$combined),]$ols_pred
+
+
+
+when_above <- syn_data_combined[syn_data_combined$combined==syn_data_combined_max_inclusion,]$ols_low>=syn_data_combined[syn_data_combined$combined==syn_data_combined_min_inclusion,]$ols_up
+
+min(syn_data_combined[when_above,]$blau2)
+
+dif <- abs(moby$blau2 - min(syn_data_combined[when_above,]$blau2))
+
+m <- min(dif)
+
+index <- !is.na(match(dif, m))
+
+moby[index,]$prop_women2
+moby[index,]$blau2
+```
+
+Margins plot - game level w firm FE
+```{r, fig.width = 6.6, fig.height = 6.6}
+theme_set(theme_bw())
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+
+mean_diversity <- mean(moby_repeat_devs$blau2)
+min_diversity <- min(moby_repeat_devs$blau2)
+max_diversity <- max(moby_repeat_devs$blau2)
+sd_diversity <- sd(moby_repeat_devs$blau2)
+q1_diversity <- quantile(moby_repeat_devs$blau2, probs = 0.25)
+q3_diversity <- quantile(moby_repeat_devs$blau2, probs = 0.75)
+
+hi_color = "#b4de75"
+lo_color = "#69629a"
+
+
+syn_data_mixing_min <- min(syn_data_mixing_fe$ols_low)
+syn_data_mixing_max <- max(syn_data_mixing_fe$ols_up)
+syn_data_mixing_min_inclusion <- min(syn_data_mixing_fe$mixing)
+syn_data_mixing_max_inclusion <- max(syn_data_mixing_fe$mixing)
+
+syn_data_bonding_min <- min(syn_data_bonding_fe$ols_low)
+syn_data_bonding_max <- max(syn_data_bonding_fe$ols_up)
+syn_data_bonding_min_inclusion <- min(syn_data_bonding_fe$bonding)
+syn_data_bonding_max_inclusion <- max(syn_data_bonding_fe$bonding)
+
+syn_data_incorporating_min <- min(syn_data_incorporating_fe$ols_low)
+syn_data_incorporating_max <- max(syn_data_incorporating_fe$ols_up)
+syn_data_incorporating_min_inclusion <- min(syn_data_incorporating_fe$incorporating)
+syn_data_incorporating_max_inclusion <- max(syn_data_incorporating_fe$incorporating)
+
+syn_data_combined_min <- min(syn_data_combined_fe$ols_low)
+syn_data_combined_max <- max(syn_data_combined_fe$ols_up)
+syn_data_combined_min_inclusion <- min(syn_data_combined_fe$combined)
+syn_data_combined_max_inclusion <- max(syn_data_combined_fe$combined)
+
+#global_y_max <- max(c(syn_data_mixing_max, syn_data_bonding_max, syn_data_incorporating_max, syn_data_combined_max))
+#global_y_min <- min(c(syn_data_mixing_min, syn_data_bonding_min, syn_data_incorporating_min, syn_data_combined_min))
+global_y_max=0.9
+global_y_min=0.5
+
+
+m_top <- 2
+m_left <-0
+m_bottom <- 0
+m_right <- 0
+ts <- 3.2
+tit_s <- 11
+
+
+
+mixing_margins_fe <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = .1) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_mixing_fe[syn_data_mixing_fe$mixing==syn_data_mixing_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_mixing_fe[syn_data_mixing_fe$mixing==syn_data_mixing_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_mixing_fe[syn_data_mixing_fe$mixing==syn_data_mixing_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_mixing_fe[syn_data_mixing_fe$mixing==syn_data_mixing_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="Predicted distinctiveness") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_mixing_fe$blau2, n = 5), 
+                     name="") +
+  
+coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+    annotate(geom="text", x=mean_diversity-0.01,    y=0.88, label="Mean\n Gender\nDiversity", lineheight = .8,  col="black", size=3.2, hjust = 1, alpha = 1) +
+  
+    annotate(geom="text", x=mean_diversity,    y=0.715, label="IQR of \nGender Diversity", lineheight = .8,  col="black", size=3.2, hjust = 0.5, alpha = 1) +
+    annotate("segment", x = q1_diversity, xend = q3_diversity, y = .70, yend = .70, size=0.2, arrow = arrow(ends = "both", angle = 45, length = unit(1,"mm"))) +
+  
+    annotate(geom="text", x=0.45,    y=0.87, label="Maximal\nInclusion", lineheight = .8,  col=hi_color, size=3.2, hjust = 1, alpha = 1) +
+    #geom_segment(aes(y=0.85,    x=0.25, yend = 0.81, xend = 0.28),size=0.6, col = hi_color, alpha=0.66, linetype=3) +
+  
+    annotate(geom="text", x=.45,    y=0.71, label="Minimal\nInclusion", lineheight = .8,   col=lo_color, size=3.2, hjust = 1, alpha = 1) +
+    #geom_segment(aes(y=0.72,    x=.25, yend = 0.76, xend = .28),size=0.6, col = lo_color, alpha=0.66, linetype=3) +
+  
+    
+  
+
+  
+  labs(title="Mixing")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,0), "mm")
+            )
+
+
+
+
+bonding_margins_fe <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = .1) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_bonding_fe[syn_data_bonding_fe$bonding==syn_data_bonding_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_bonding_fe[syn_data_bonding_fe$bonding==syn_data_bonding_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_bonding_fe[syn_data_bonding_fe$bonding==syn_data_bonding_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_bonding_fe[syn_data_bonding_fe$bonding==syn_data_bonding_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_bonding_fe$blau2, n = 5), 
+                     name="") +
+  
+coord_cartesian(ylim = c(0.69, 0.90)) +
+
+  
+  labs(title="Bonding")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+incorporating_margins_fe <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = .1) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_incorporating_fe[syn_data_incorporating_fe$incorporating==syn_data_incorporating_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_incorporating_fe[syn_data_incorporating_fe$incorporating==syn_data_incorporating_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_incorporating_fe[syn_data_incorporating_fe$incorporating==syn_data_incorporating_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_incorporating_fe[syn_data_incorporating_fe$incorporating==syn_data_incorporating_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="Predicted distinctiveness") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_incorporating_fe$blau2, n = 5), 
+                     name="Gender diversity") +
+  
+  coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+
+  
+  labs(title="Incorporating")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+
+combined_margins_fe <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = .1) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_combined_fe[syn_data_combined_fe$combined==syn_data_combined_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_combined_fe[syn_data_combined_fe$combined==syn_data_combined_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_combined_fe[syn_data_combined_fe$combined==syn_data_combined_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_combined_fe[syn_data_combined_fe$combined==syn_data_combined_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=0.2, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_combined_fe$blau2, n = 5), 
+                     name="Gender diversity") +
+  
+  coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+
+  
+  labs(title="Combined inclusion")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+
+margins_gamelevel_fe <- grid.arrange(mixing_margins_fe, bonding_margins_fe, incorporating_margins_fe,combined_margins_fe, nrow = 2)
+#margins
+```
+
+
+```{r}
+ggsave("margins_fe_mid.pdf", margins_gamelevel_fe, width = 6.6, height = 6.6)
+ggsave("margins_fe_sm.pdf", margins_gamelevel_fe, width = 4.2, height = 4.2)
+```
+
+
+
+
+
+
+Margins plot - firm level
+```{r, fig.width = 6.6, fig.height = 6.6}
+theme_set(theme_bw())
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+
+mean_diversity <- mean(moby_dev_firm_level$blau2)
+min_diversity <- min(moby_dev_firm_level$blau2)
+max_diversity <- max(moby_dev_firm_level$blau2)
+sd_diversity <- sd(moby_dev_firm_level$blau2)
+q1_diversity <- quantile(moby_dev_firm_level$blau2, probs = 0.25)
+q3_diversity <- quantile(moby_dev_firm_level$blau2, probs = 0.75)
+
+hi_color = "#b4de75"
+lo_color = "#69629a"
+
+
+syn_data_mixing_aggr_min <- min(syn_data_mixing_aggr$ols_low)
+syn_data_mixing_aggr_max <- max(syn_data_mixing_aggr$ols_up)
+syn_data_mixing_aggr_min_inclusion <- min(syn_data_mixing_aggr$mixing)
+syn_data_mixing_aggr_max_inclusion <- max(syn_data_mixing_aggr$mixing)
+
+syn_data_bonding_aggr_min <- min(syn_data_bonding_aggr$ols_low)
+syn_data_bonding_aggr_max <- max(syn_data_bonding_aggr$ols_up)
+syn_data_bonding_aggr_min_inclusion <- min(syn_data_bonding_aggr$bonding)
+syn_data_bonding_aggr_max_inclusion <- max(syn_data_bonding_aggr$bonding)
+
+syn_data_incorporating_aggr_min <- min(syn_data_incorporating_aggr$ols_low)
+syn_data_incorporating_aggr_max <- max(syn_data_incorporating_aggr$ols_up)
+syn_data_incorporating_aggr_min_inclusion <- min(syn_data_incorporating_aggr$incorporating)
+syn_data_incorporating_aggr_max_inclusion <- max(syn_data_incorporating_aggr$incorporating)
+
+syn_data_combined_aggr_min <- min(syn_data_combined_aggr$ols_low)
+syn_data_combined_aggr_max <- max(syn_data_combined_aggr$ols_up)
+syn_data_combined_aggr_min_inclusion <- min(syn_data_combined_aggr$combined)
+syn_data_combined_aggr_max_inclusion <- max(syn_data_combined_aggr$combined)
+
+global_y_max <- max(c(syn_data_mixing_aggr_max, syn_data_bonding_aggr_max, syn_data_incorporating_aggr_max, syn_data_combined_aggr_max))
+global_y_min <- min(c(syn_data_mixing_aggr_min, syn_data_bonding_aggr_min, syn_data_incorporating_aggr_min, syn_data_combined_aggr_min))
+
+
+m_top <- 2
+m_left <-0
+m_bottom <- 0
+m_right <- 0
+ts <- 3.2
+tit_s <- 11
+iqr_alpha <- 0.07
+ribbon_alpha <- 0.33
+
+
+mixing_margins_aggr <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_mixing_aggr[syn_data_mixing_aggr$mixing==syn_data_mixing_aggr_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_mixing_aggr[syn_data_mixing_aggr$mixing==syn_data_mixing_aggr_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_mixing_aggr[syn_data_mixing_aggr$mixing==syn_data_mixing_aggr_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_mixing_aggr[syn_data_mixing_aggr$mixing==syn_data_mixing_aggr_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="Predicted distinctiveness") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_mixing_aggr$blau2, n = 5), 
+                     name="") +
+  
+coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+    annotate(geom="text", x=mean_diversity-0.01,    y=0.88, label="Mean\n Gender\nDiversity", lineheight = .8,  col="black", size=3.2, hjust = 1, alpha = 1) +
+  
+    annotate(geom="text", x=mean_diversity,    y=0.715, label="IQR of \nGender Diversity", lineheight = .8,  col="black", size=3.2, hjust = 0.5, alpha = 1) +
+    annotate("segment", x = q1_diversity, xend = q3_diversity, y = .70, yend = .70, size=0.2, arrow = arrow(ends = "both", angle = 45, length = unit(1,"mm"))) +
+  
+    annotate(geom="text", x=.42,    y=0.869, label="Maximal\nInclusion", lineheight = .8,  col="black", size=3.2, hjust = 1, alpha = 1, angle = 35.5) +
+    #geom_segment(aes(y=0.85,    x=0.25, yend = 0.81, xend = 0.28),size=0.6, col = hi_color, alpha=0.66, linetype=3) +
+  
+    annotate(geom="text", x=.42,    y=0.74, label="Minimal\nInclusion", lineheight = .8,   col="black", size=3.2, hjust = 1, alpha = 1, angle = -30) +
+    #geom_segment(aes(y=0.72,    x=.25, yend = 0.76, xend = .28),size=0.6, col = lo_color, alpha=0.66, linetype=3) +
+  
+    
+  
+
+  
+  labs(title="Mixing")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,0), "mm")
+            )
+
+
+
+
+bonding_margins_aggr <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_bonding_aggr[syn_data_bonding_aggr$bonding==syn_data_bonding_aggr_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_bonding_aggr[syn_data_bonding_aggr$bonding==syn_data_bonding_aggr_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_bonding_aggr[syn_data_bonding_aggr$bonding==syn_data_bonding_aggr_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_bonding_aggr[syn_data_bonding_aggr$bonding==syn_data_bonding_aggr_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_bonding_aggr$blau2, n = 5), 
+                     name="") +
+  
+coord_cartesian(ylim = c(0.69, 0.90)) +
+
+  
+  labs(title="Bonding")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+incorporating_margins_aggr <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_ribbon(data=syn_data_incorporating_aggr[syn_data_incorporating_aggr$incorporating==syn_data_incorporating_aggr_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+  geom_line(data=syn_data_incorporating_aggr[syn_data_incorporating_aggr$incorporating==syn_data_incorporating_aggr_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+
+  #max inclusion prediction and CI
+  
+  geom_ribbon(data=syn_data_incorporating_aggr[syn_data_incorporating_aggr$incorporating==syn_data_incorporating_aggr_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  geom_line(data=syn_data_incorporating_aggr[syn_data_incorporating_aggr$incorporating==syn_data_incorporating_aggr_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="Predicted distinctiveness") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_incorporating_aggr$blau2, n = 5), 
+                     name="Gender diversity") +
+  
+  coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+
+  
+  labs(title="Incorporating")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+
+combined_margins_aggr <- ggplot()+
+  
+  #annotate("rect", xmin = min_diversity, xmax = max_diversity, ymin = 0.65, ymax = 1, alpha = .05) +
+  annotate("rect", xmin = q1_diversity, xmax = q3_diversity, ymin = global_y_min, ymax = global_y_max, alpha = iqr_alpha) +
+  geom_vline(xintercept = q1_diversity,size=0.1) +
+  geom_vline(xintercept = q3_diversity,size=0.1) +
+  geom_vline(xintercept = mean_diversity,size=0.3, linetype="dashed", alpha = .5) +
+  
+  #min inclusion prediction and CI
+  geom_line(data=syn_data_combined_aggr[syn_data_combined_aggr$combined==syn_data_combined_aggr_min_inclusion,],   aes(blau2, ols_pred), color=lo_color)+
+  geom_ribbon(data=syn_data_combined_aggr[syn_data_combined_aggr$combined==syn_data_combined_aggr_min_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=lo_color)+
+
+  #max inclusion prediction and CI
+  geom_line(data=syn_data_combined_aggr[syn_data_combined_aggr$combined==syn_data_combined_aggr_max_inclusion,],   aes(blau2, ols_pred), color=hi_color)+
+  geom_ribbon(data=syn_data_combined_aggr[syn_data_combined_aggr$combined==syn_data_combined_aggr_max_inclusion,], aes(blau2, ymin=ols_low, ymax=ols_up),alpha=ribbon_alpha, fill=hi_color)+ 
+  
+  #axes formatting
+  scale_y_continuous(
+                     #trans='log10',
+                     limits=c(global_y_min, global_y_max), 
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     #breaks = c(30, 50, 100, 200, 300, 400, 500), 
+                     name="") +
+  scale_x_continuous(limits=c(min_diversity, max_diversity),
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = pretty(syn_data_combined_aggr$blau2, n = 5), 
+                     name="Gender diversity") +
+  
+  coord_cartesian(ylim = c(0.69, 0.90)) +
+  
+  
+
+  
+  labs(title="Combined inclusion")+
+  
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black"),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+
+
+
+margins_firmlevel <- grid.arrange(mixing_margins_aggr, bonding_margins_aggr, incorporating_margins_aggr,combined_margins_aggr, nrow = 2)
+#margins
+```
+
+```{r}
+ggsave("margins_firmlevel_mid.pdf", margins_firmlevel, width = 6.6, height = 6.6)
+ggsave("margins_firmlevel_sm.pdf", margins_firmlevel, width = 4.2, height = 4.2)
+```
+
+
+
+
+
+#Point estimates
+
+##Game level, STD
+
+```{r}
+#get model coefs with 95% CI
+point_est_model1_var1 <- data.frame(without_inclusion_z$coefficients[2] ,confint(without_inclusion_z, 2, level=0.95))
+colnames(point_est_model1_var1) <- c("estim", "ci_025", "ci_975")
+
+point_est_model2_var1 <- data.frame(mixing_z$coefficients[2] ,confint(mixing_z, 2, level=0.95))
+colnames(point_est_model2_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model2_var2 <- data.frame(mixing_z$coefficients[3] ,confint(mixing_z, 3, level=0.95))
+colnames(point_est_model2_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model2_var3 <- data.frame(mixing_z$coefficients[32] ,confint(mixing_z, 32, level=0.95))
+colnames(point_est_model2_var3) <- c("estim", "ci_025", "ci_975")
+
+point_est_model3_var1 <- data.frame(bonding_z$coefficients[2] ,confint(bonding_z, 2, level=0.95))
+colnames(point_est_model3_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model3_var2 <- data.frame(bonding_z$coefficients[3] ,confint(bonding_z, 3, level=0.95))
+colnames(point_est_model3_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model3_var3 <- data.frame(bonding_z$coefficients[32] ,confint(bonding_z, 32, level=0.95))
+colnames(point_est_model3_var3) <- c("estim", "ci_025", "ci_975")
+
+point_est_model4_var1 <- data.frame(incorporating_z$coefficients[2] ,confint(incorporating_z, 2, level=0.95))
+colnames(point_est_model4_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model4_var2 <- data.frame(incorporating_z$coefficients[3] ,confint(incorporating_z, 3, level=0.95))
+colnames(point_est_model4_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model4_var3 <- data.frame(incorporating_z$coefficients[32] ,confint(incorporating_z, 32, level=0.95))
+colnames(point_est_model4_var3) <- c("estim", "ci_025", "ci_975")
+
+point_est_model5_var1 <- data.frame(combined_z$coefficients[2] ,confint(combined_z, 2, level=0.95))
+colnames(point_est_model5_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model5_var2 <- data.frame(combined_z$coefficients[3] ,confint(combined_z, 3, level=0.95))
+colnames(point_est_model5_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model5_var3 <- data.frame(combined_z$coefficients[32] ,confint(combined_z, 32, level=0.95))
+colnames(point_est_model5_var3) <- c("estim", "ci_025", "ci_975")
+```
+
+
+
+
+
+```{r, fig.width = 3, fig.height = 2.6}
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+
+s <- 2.1
+ps <- 1.85
+tit_s <- 12
+asp <- 1
+
+m_top <- 2
+m_left <-0
+m_bottom <- 0
+m_right <- -10
+
+ols_estim_gamelevel <- ggplot()+
+  geom_hline(yintercept = 0, linetype="dashed", alpha=0.7, color="black", size=0.2) +
+  
+  #prop women X inclusion
+
+  geom_errorbar(data = point_est_model2_var3, aes(x = 1.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var3, aes(x = 1.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.3,    y=point_est_model2_var3$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var3, aes(x=1.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var3, aes(x=1.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.1,    y=point_est_model3_var3$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var3, aes(x = 0.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var3, aes(x = 0.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=0.9,    y=point_est_model4_var3$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var3, aes(x = 0.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var3, aes(x = 0.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=0.7,    y=point_est_model5_var3$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  
+  #inclusion
+
+  
+  geom_errorbar(data = point_est_model2_var2, aes(x = 2.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var2, aes(x = 2.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.3,    y=point_est_model2_var2$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var2, aes(x=2.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var2, aes(x=2.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.1,    y=point_est_model3_var2$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var2, aes(x = 1.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var2, aes(x = 1.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.9,    y=point_est_model4_var2$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var2, aes(x = 1.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var2, aes(x = 1.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.7,    y=point_est_model5_var2$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+
+  
+  #prop women
+
+  
+    
+  geom_errorbar(data = point_est_model1_var1, aes(x = 3.5, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="red", size=0.75) +
+  geom_point(   data = point_est_model1_var1, aes(x = 3.5, estim), alpha=1, color="red", shape=21, fill="red", size=ps, stroke=1) +
+  annotate(geom="text", x=3.5,    y=point_est_model1_var1$estim, label="0",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model2_var1, aes(x = 3.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var1, aes(x = 3.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=3.3,    y=point_est_model2_var1$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var1, aes(x=3.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var1, aes(x=3.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=3.1,    y=point_est_model3_var1$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var1, aes(x = 2.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var1, aes(x = 2.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.9,    y=point_est_model4_var1$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var1, aes(x = 2.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var1, aes(x = 2.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.7,    y=point_est_model5_var1$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+
+  
+  #explain
+
+
+  annotate(geom="text", x=3.5,    y=-0.1, label="Main effect",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=3.5, yend = point_est_model1_var1$ci_025-0.01, xend = 3.5),size=0.3, col = "grey50", alpha=0.66, linetype=3) +  
+    
+  annotate(geom="text", x=1.3,    y=-0.1, label="Mixing",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=1.3, yend = point_est_model2_var3$ci_025-0.01, xend = 1.3),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=1.1,    y=-0.1, label="Bonding",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=1.1, yend = point_est_model3_var3$ci_025-0.01, xend = 1.1),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=0.9,    y=-0.1, label="Incorporating",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=0.9, yend = point_est_model4_var3$ci_025-0.01, xend = 0.9),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=0.7,    y=-0.1, label="Combined",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=0.7, yend = point_est_model5_var3$ci_025-0.01, xend = 0.7),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+
+  
+  
+  geom_vline(xintercept = 1.5, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  geom_vline(xintercept = 2.5, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  #geom_vline(xintercept = 3.425, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  #geom_vline(xintercept = 4.425, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  
+  scale_x_continuous(breaks=(1:3), expand = c(0.05,0.05), labels=c("Gender\ndiversity \u00D7\nInclusion", "Inclusion", "Gender\ndiversity")) +
+  #scale_y_continuous(breaks=c(-0.2, -0.1, 0, 0.1, 0.2, 0.3)) +
+  #coord_cartesian(ylim = c(-0.2, 0.2)) +
+  
+   labs(y="Distinctiveness") +
+  ggtitle("a: Game level") + 
+  scale_y_continuous(breaks=seq(-0.4, 0.2, 0.1), labels = dropLeadingZero)+
+  coord_flip(ylim = c(-0.4, 0.2)) +
+  theme(aspect.ratio=asp, 
+            title =element_text(size=11, face='bold'),
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            #legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            axis.ticks.y = element_blank(),
+            axis.title.y = element_blank(),
+            axis.text.y = element_text(size = 11, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+  
+
+#grid.newpage()
+ols_estim_gamelevel
+```
+
+```{r}
+ggsave("ols_estim_gamelevel.pdf", ols_estim_gamelevel, width = 3, height = 2.6)
+```
+
+
+
+
+
+##Firm level, STD
+
+```{r}
+#get model coefs with 95% CI
+point_est_model1_var1 <- data.frame(without_inclusion_aggr_z$coefficients[2] ,confint(without_inclusion_aggr_z, 2, level=0.95))
+colnames(point_est_model1_var1) <- c("estim", "ci_025", "ci_975")
+
+
+point_est_model2_var1 <- data.frame(mixing_aggr_z$coefficients[2] ,confint(mixing_aggr_z, 2, level=0.95))
+colnames(point_est_model2_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model2_var2 <- data.frame(mixing_aggr_z$coefficients[3] ,confint(mixing_aggr_z, 3, level=0.95))
+colnames(point_est_model2_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model2_var3 <- data.frame(mixing_aggr_z$coefficients[32] ,confint(mixing_aggr_z, 32, level=0.95))
+colnames(point_est_model2_var3) <- c("estim", "ci_025", "ci_975")
+
+point_est_model3_var1 <- data.frame(bonding_aggr_z$coefficients[2] ,confint(bonding_aggr_z, 2, level=0.95))
+colnames(point_est_model3_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model3_var2 <- data.frame(bonding_aggr_z$coefficients[3] ,confint(bonding_aggr_z, 3, level=0.95))
+colnames(point_est_model3_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model3_var3 <- data.frame(bonding_aggr_z$coefficients[32] ,confint(bonding_aggr_z, 32, level=0.95))
+colnames(point_est_model3_var3) <- c("estim", "ci_025", "ci_975")
+
+point_est_model4_var1 <- data.frame(incorporating_aggr_z$coefficients[2] ,confint(incorporating_aggr_z, 2, level=0.95))
+colnames(point_est_model4_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model4_var2 <- data.frame(incorporating_aggr_z$coefficients[3] ,confint(incorporating_aggr_z, 3, level=0.95))
+colnames(point_est_model4_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model4_var3 <- data.frame(incorporating_aggr_z$coefficients[32] ,confint(incorporating_aggr_z, 32, level=0.95))
+colnames(point_est_model4_var3) <- c("estim", "ci_025", "ci_975")
+
+point_est_model5_var1 <- data.frame(combined_aggr_z$coefficients[2] ,confint(combined_aggr_z, 2, level=0.95))
+colnames(point_est_model5_var1) <- c("estim", "ci_025", "ci_975")
+point_est_model5_var2 <- data.frame(combined_aggr_z$coefficients[3] ,confint(combined_aggr_z, 3, level=0.95))
+colnames(point_est_model5_var2) <- c("estim", "ci_025", "ci_975")
+point_est_model5_var3 <- data.frame(combined_aggr_z$coefficients[32] ,confint(combined_aggr_z, 32, level=0.95))
+colnames(point_est_model5_var3) <- c("estim", "ci_025", "ci_975")
+```
+
+
+
+
+
+```{r, fig.width = 3, fig.height = 2.6}
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+
+
+s <- 2.1
+ps <- 1.85
+tit_s <- 12
+asp <- 1
+
+m_top <- 2
+m_left <-0
+m_bottom <- 0
+m_right <- 0
+
+ols_estim_firmlevel <- ggplot()+
+  geom_hline(yintercept = 0, linetype="dashed", alpha=0.7, color="black", size=0.2) +
+  
+  #prop women X inclusion
+
+  geom_errorbar(data = point_est_model2_var3, aes(x = 1.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var3, aes(x = 1.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.3,    y=point_est_model2_var3$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var3, aes(x=1.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var3, aes(x=1.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.1,    y=point_est_model3_var3$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var3, aes(x = 0.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var3, aes(x = 0.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=0.9,    y=point_est_model4_var3$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var3, aes(x = 0.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var3, aes(x = 0.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=0.7,    y=point_est_model5_var3$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  
+  #inclusion
+
+  
+  geom_errorbar(data = point_est_model2_var2, aes(x = 2.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var2, aes(x = 2.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.3,    y=point_est_model2_var2$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var2, aes(x=2.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var2, aes(x=2.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.1,    y=point_est_model3_var2$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var2, aes(x = 1.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var2, aes(x = 1.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.9,    y=point_est_model4_var2$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var2, aes(x = 1.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var2, aes(x = 1.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.7,    y=point_est_model5_var2$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+
+  
+  #prop women
+
+  
+    
+  geom_errorbar(data = point_est_model1_var1, aes(x = 3.5, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="red", size=0.75) +
+  geom_point(   data = point_est_model1_var1, aes(x = 3.5, estim), alpha=1, color="red", shape=21, fill="red", size=ps, stroke=1) +
+  annotate(geom="text", x=3.5,    y=point_est_model1_var1$estim, label="0",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model2_var1, aes(x = 3.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var1, aes(x = 3.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=3.3,    y=point_est_model2_var1$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var1, aes(x=3.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var1, aes(x=3.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=3.1,    y=point_est_model3_var1$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var1, aes(x = 2.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var1, aes(x = 2.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.9,    y=point_est_model4_var1$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var1, aes(x = 2.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var1, aes(x = 2.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.7,    y=point_est_model5_var1$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+
+  
+  #explain
+
+
+  annotate(geom="text", x=3.5,    y=-0.1, label="Main effect",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=3.5, yend = point_est_model1_var1$ci_025-0.01, xend = 3.5),size=0.3, col = "grey50", alpha=0.66, linetype=3) +  
+    
+  annotate(geom="text", x=1.3,    y=-0.1, label="Mixing",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=1.3, yend = point_est_model2_var3$ci_025-0.01, xend = 1.3),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=1.1,    y=-0.1, label="Bonding",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=1.1, yend = point_est_model3_var3$ci_025-0.01, xend = 1.1),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=0.9,    y=-0.1, label="Incorporating",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=0.9, yend = point_est_model4_var3$ci_025-0.01, xend = 0.9),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=0.7,    y=-0.1, label="Combined",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=0.7, yend = point_est_model5_var3$ci_025-0.01, xend = 0.7),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+
+  
+  
+  geom_vline(xintercept = 1.5, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  geom_vline(xintercept = 2.5, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  #geom_vline(xintercept = 3.425, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  #geom_vline(xintercept = 4.425, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  
+  scale_x_continuous(breaks=(1:3), expand = c(0.05,0.05), labels=c("Gender\ndiversity \u00D7\nInclusion", "Inclusion", "Gender\ndiversity")) +
+  #scale_y_continuous(breaks=c(-0.2, -0.1, 0, 0.1, 0.2, 0.3)) +
+  #coord_cartesian(ylim = c(-0.2, 0.2)) +
+  
+  labs(y="Distinctiveness") +
+  ggtitle("b: Firm level") + 
+  scale_y_continuous(breaks=seq(-0.4, 0.2, 0.1), labels = dropLeadingZero)+
+  coord_flip(ylim = c(-0.4, 0.2)) +
+  theme(aspect.ratio=asp, 
+            title =element_text(size=11, face='bold'),
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            #legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            axis.ticks.y = element_blank(),
+            axis.title.y = element_blank(),
+            axis.text.y = element_text(size = 11, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+  
+
+#grid.newpage()
+ols_estim_firmlevel
+```
+
+```{r}
+ggsave("ols_estim_firmlevel.pdf", ols_estim_firmlevel, width = 3, height = 2.6)
+```
+
+
+```{r, fig.width = 3, fig.height = 2.6}
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+
+s <- 2.1
+ps <- 1.85
+tit_s <- 12
+asp <- 1
+
+m_top <- 2
+m_left <--10
+m_bottom <- 0
+m_right <- 0
+
+
+ols_estim_firmlevel2 <- ggplot()+
+  geom_hline(yintercept = 0, linetype="dashed", alpha=0.7, color="black", size=0.2) +
+  
+  #prop women X inclusion
+
+  geom_errorbar(data = point_est_model2_var3, aes(x = 1.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var3, aes(x = 1.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.3,    y=point_est_model2_var3$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var3, aes(x=1.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var3, aes(x=1.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.1,    y=point_est_model3_var3$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var3, aes(x = 0.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var3, aes(x = 0.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=0.9,    y=point_est_model4_var3$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var3, aes(x = 0.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var3, aes(x = 0.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=0.7,    y=point_est_model5_var3$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  
+  #inclusion
+
+  
+  geom_errorbar(data = point_est_model2_var2, aes(x = 2.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var2, aes(x = 2.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.3,    y=point_est_model2_var2$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var2, aes(x=2.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var2, aes(x=2.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.1,    y=point_est_model3_var2$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var2, aes(x = 1.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var2, aes(x = 1.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.9,    y=point_est_model4_var2$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var2, aes(x = 1.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var2, aes(x = 1.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=1.7,    y=point_est_model5_var2$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+
+  
+  #prop women
+
+  
+    
+  geom_errorbar(data = point_est_model1_var1, aes(x = 3.5, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="red", size=0.75) +
+  geom_point(   data = point_est_model1_var1, aes(x = 3.5, estim), alpha=1, color="red", shape=21, fill="red", size=ps, stroke=1) +
+  annotate(geom="text", x=3.5,    y=point_est_model1_var1$estim, label="0",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model2_var1, aes(x = 3.3, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model2_var1, aes(x = 3.3, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=3.3,    y=point_est_model2_var1$estim, label="1",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model3_var1, aes(x=3.1, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model3_var1, aes(x=3.1, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=3.1,    y=point_est_model3_var1$estim, label="2",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model4_var1, aes(x = 2.9, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model4_var1, aes(x = 2.9, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.9,    y=point_est_model4_var1$estim, label="3",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+  geom_errorbar(data = point_est_model5_var1, aes(x = 2.7, ymin = ci_025, ymax = ci_975), width=0, alpha=1, color="black", size=0.75) +
+  geom_point(   data = point_est_model5_var1, aes(x = 2.7, estim), alpha=1, color="black", shape=21, fill="black", size=ps, stroke=1) +
+  annotate(geom="text", x=2.7,    y=point_est_model5_var1$estim, label="4",   col="white", size=s, hjust = 0.5, alpha = 1) +
+  
+
+  
+  #explain
+
+
+  annotate(geom="text", x=3.5,    y=-0.1, label="Main effect",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=3.5, yend = point_est_model1_var1$ci_025-0.01, xend = 3.5),size=0.3, col = "grey50", alpha=0.66, linetype=3) +  
+    
+  annotate(geom="text", x=1.3,    y=-0.1, label="Mixing",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=1.3, yend = point_est_model2_var3$ci_025-0.01, xend = 1.3),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=1.1,    y=-0.1, label="Bonding",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=1.1, yend = point_est_model3_var3$ci_025-0.01, xend = 1.1),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=0.9,    y=-0.1, label="Incorporating",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=0.9, yend = point_est_model4_var3$ci_025-0.01, xend = 0.9),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=0.7,    y=-0.1, label="Combined",   col="grey50", size=2.9, hjust = 1, alpha = 1) +
+  geom_segment(aes(y=-0.1,    x=0.7, yend = point_est_model5_var3$ci_025-0.01, xend = 0.7),size=0.3, col = "grey50", alpha=0.66, linetype=3) +
+
+  
+  
+  geom_vline(xintercept = 1.5, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  geom_vline(xintercept = 2.5, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  #geom_vline(xintercept = 3.425, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  #geom_vline(xintercept = 4.425, linetype="solid", alpha=0.7, color="black", size=0.2) +
+  
+  scale_x_continuous(breaks=(1:3), expand = c(0.05,0.05), labels=c("", "", "")) +
+  #scale_y_continuous(breaks=c(-0.2, -0.1, 0, 0.1, 0.2, 0.3)) +
+  #coord_cartesian(ylim = c(-0.2, 0.2)) +
+  
+  labs(y="Distinctiveness") +
+  ggtitle("b: Firm level") + 
+  scale_y_continuous(breaks=seq(-0.4, 0.2, 0.1), labels = dropLeadingZero)+
+  coord_flip(ylim = c(-0.4, 0.2)) +
+  theme(aspect.ratio=asp, 
+            title =element_text(size=11, face='bold'),
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            #legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            axis.ticks.y = element_blank(),
+            axis.title.y = element_blank(),
+            axis.text.y = element_text(size = 11, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+  
+
+#grid.newpage()
+ols_estim_firmlevel2
+```
+
+```{r, fig.width = 5.6, fig.height = 2.6}
+ols_estim_combined <- grid.arrange(ols_estim_gamelevel, ols_estim_firmlevel2,nrow = 1)
+```
+
+```{r}
+ggsave("ols_estim_combined.pdf", ols_estim_combined, width = 5.6, height = 2.6)
+```
+
+
+
+#Descriptive figure for trends
+
+```{r}
+#install.packages("Publish")
+library(Publish) 
+
+moby$combined_raw <- moby$mixing*moby$bonding*moby$incorporating
+
+mean(full$prop_women)
+mean(moby$combined_raw)
+
+mean_propw <- data.frame(ci.mean(prop_women ~ year, data=full)) 
+mean_inclusion <- data.frame(ci.mean(combined_raw ~ year, data=moby)) 
+```
+
+
+```{r, fig.width = 2, fig.height = 2}
+min_y <- min(min(mean_propw$mean), min(mean_inclusion$mean))
+max_y <- max(max(mean_propw$mean), max(mean_inclusion$mean))
+
+
+
+desc_trends <- ggplot()+
+
+  #gender diversity
+  geom_line(data=mean_propw,   aes(x=year, y=mean, group = 1), color=lo_color)+
+  geom_ribbon(data=mean_propw, aes(year, ymin=lower, ymax=upper, group = 1),alpha=ribbon_alpha, fill=lo_color)+
+  geom_smooth(data=mean_propw,   aes(x=year, y=mean, group = 1), method = "lm", formula = y ~ x, color=lo_color, size = 0.3, linetype = 2, se = FALSE)+
+
+  #inclusion
+  geom_line(data=mean_inclusion,   aes(x=year, y=mean, group = 1), color=hi_color)+
+  geom_ribbon(data=mean_inclusion, aes(year, ymin=lower, ymax=upper, group = 1),alpha=ribbon_alpha, fill=hi_color)+
+  geom_smooth(data=mean_inclusion,   aes(x=year, y=mean, group = 1), method = "lm", formula = y ~ x, color=hi_color, size = 0.3, linetype = 2, se = FALSE)+
+  
+  annotate(geom="text", x=2,    y=0.176, label="Proportion of\nfemale\ndevelopers", lineheight = .8,  col="black", size=2.9, hjust = 0, alpha = 1) +
+    #geom_segment(aes(y=0.85,    x=0.25, yend = 0.81, xend = 0.28),size=0.6, col = hi_color, alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=14,    y=0.08, label="Combined\ninclusion", lineheight = .8,   col="black", size=2.9, hjust = 1, alpha = 1) +
+    #geom_segment(aes(y=0.72,    x=.25, yend = 0.76, xend = .28),size=0.6, col = lo_color, alpha=0.66, linetype=3) +
+  
+  #axes formatting
+  scale_y_continuous(
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = c(0.06, 0.09, 0.12, 0.15, 0.18), 
+                     name="") +
+  scale_x_discrete(   breaks = mean_propw$year[seq(1, length(mean_propw$yea), by = 2)],
+                      expand = c(0.001,0.001), 
+                      name="") +
+
+  
+
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major.x = element_blank(), 
+            panel.grid.major.y = element_line(color = "gray50",
+                                  size = 0.1,
+                                  linetype = 1),
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black", angle = 90, vjust = 0.5, hjust=1),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+desc_trends
+```
+
+
+
+```{r}
+ggsave("desc_trends.pdf", desc_trends, width = 2, height = 2)
+```
+
+
+```{r}
+summary(lm(prop_women ~ year, data = full))
+
+summary(lm(mean ~ as.numeric(year), data = mean_propw))
+```
+
+
+```{r}
+df <- data.frame(cbind(full$org_dev, full$prop_women2))
+colnames(df) <- c("org_dev", "prop_women2")
+
+firm_n_games <- aggregate(df, list(org_dev = df$org_dev), length)[,1:2]
+colnames(firm_n_games) <- c("org_dev", "n_games")
+firm_min_prop_women <- aggregate(df, list(org_dev = df$org_dev), min)
+firm_max_prop_women <- aggregate(df, list(org_dev = df$org_dev), max)
+
+filter <- (firm_min_prop_women$prop_women2==0 & firm_max_prop_women$prop_women2>0)
+
+filter[is.na(filter)==T] <- F
+
+table(filter)
+
+firm_n_games <- firm_n_games[filter,]
+firm_min_prop_women <- firm_min_prop_women[filter,]
+firm_max_prop_women <- firm_max_prop_women[filter,]
+
+a=c(1,1,1,2,3,4,4,4,5,5)
+b=c(2,3)
+match(b,a)
+
+index <- !is.na(match(full$org_dev, firm_n_games$org_dev))
+
+full_subset <- full[index,]
+
+full_subset <- full_subset[order(full_subset$org_dev, full_subset$year),]
+
+vars_keep <- c("org_dev", "game_dist_prev5yr", "year", "prop_women2", "n_women", "N")
+
+full_subset <- full_subset[vars_keep]
+
+n_rows <- dim(full_subset)[1]
+
+results <- matrix(0,1,3)
+
+counter=1
+for (i in 2:n_rows) {
+  if(
+     full_subset$org_dev[i-1]==full_subset$org_dev[i] &
+     full_subset$prop_women2[i-1]==0 &
+     full_subset$prop_women2[i]>0
+     ){
+    before<-full_subset$game_dist_prev5yr[i-1]
+    after<-full_subset$game_dist_prev5yr[i]
+    results <- rbind(results, c(full_subset$org_dev[i], before, after))
+    counter=counter+1
+     }
+}
+
+results <- data.frame(results[-1,])
+colnames(results) <- c("firm", "before", "after")
+
+results <- results[!duplicated(results$firm),]
+```
+
+```{r}
+df <- melt(results[,2:3])
+
+ggplot(df, aes(x = variable, y = value)) +
+  geom_boxplot()
+```
+
+```{r}
+wilcox.test(results$before, results$after, alternative = "two.sided")
+```
+```{r}
+length(unique(results$firm))
+```
+
+
+```{r}
+mean(results$before)
+mean(results$after)
+mean(results$after-results$before)
+
+summary(lm(value ~ as.factor(variable), data=df))
+```
+
