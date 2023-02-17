@@ -1,0 +1,314 @@
+---
+title: "MOBY: 1. Data prep"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+###Preparations
+
+Libraries \ read in libraries
+
+```{r, results='hide'}
+util_libraries <- c("foreign", "reshape2", "stargazer", "arm", "plyr", "tidyverse", "stringr", "qdapRegex", "GGally", "progress", "pracma", "lubridate", "DescTools", "Matrix.utils", "irr", "psych", 'gtools', "Hmisc", "colorspace")
+vis_libraries  <- c("ggplot2", "ggrepel", "grid", "gridExtra", "RColorBrewer", "scales", "corrplot", "ggeffects", "cowplot", "plot.matrix", "corrgram", "ggnetwork", "vioplot", "dotwhisker", "sjPlot", "sjlabelled", "sjmisc", "plot3D", "ggpubr", "ggExtra", "ggraph")
+stat_libraries <- c("network", "sna", "igraph", "moments", "nortest", "MASS", "randomForest", "sandwich", "lmtest", "gmodels", "margins", "sampleSelection", "pROC", "pscl",  "pwr", "relaimpo", "lme4", "plm", "caret", "ResourceSelection", "rvest", "cluster", "factoextra", "outliers", "acss", 'asbio','akima', 'plotly', 'factoextra', 'interactions', 'robustbase', "sandwich", "modelr", "broom", "mgcv", "stringdist", "sem", "lavaan", "corrr", "misty")
+
+#install.packages(util_libraries)
+#install.packages(vis_libraries)
+#install.packages(stat_libraries)
+
+for (l in 1:length(util_libraries)){ library(util_libraries[l], character.only = TRUE)}
+for (l in 1:length(vis_libraries)){ library(vis_libraries[l], character.only = TRUE)}
+for (l in 1:length(stat_libraries)){ library(stat_libraries[l], character.only = TRUE)}
+```
+
+Graph theme set
+
+```{r}
+theme_set(theme_bw())
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+```
+
+Clear the workspace
+
+```{r}
+rm(list=ls())
+```
+
+###Read data
+
+Read files
+
+```{r}
+#Main data file, filtered
+moby<-read.csv("moby_data1_17_01_2022.csv")
+
+#Main data file, unfiltered
+full<-read.csv("old_moby_data.csv")
+
+#Sales data files from various sources
+sales1<-read.csv("Video_Games_Sales_as_at_22_Dec_2016.csv") # source: https://github.com/kumartej/DataMining
+sales2<-read.csv("vgsales-12-4-2019-short.csv") #source: https://www.kaggle.com/datasets/ashaheedq/video-games-sales-2019
+sales3<-read.csv("vgsales.csv") #source: https://www.kaggle.com/datasets/gregorut/videogamesales?select=vgsales.csv
+
+#Sales data 2 variable name to match the other two files
+sales2$combined_sales <- sales2$Total_Shipped
+sales2$combined_sales[is.na(sales2$Total_Shipped)]<- sales2$Global_Sales[is.na(sales2$Total_Shipped)]
+
+#Later data collection to 2019 (to extract user scores)
+big_moby <- read.csv("game_data_0805_2019.csv")
+```
+
+
+
+Match games with sales data by game name (exact match)
+Sales 1
+```{r}
+n_games <- dim(moby)[1]
+match_loc<-matrix(nrow=n_games, ncol=1)
+
+#match game titles from main data and sales data 1
+for (i in 1:n_games) {
+  #if(i/100==trunc(i/100)){print(i)}
+  name <- moby$name[i]
+  match_loc[i] <- match(name, sales1$Name)
+}
+
+#add sales data at the matched observation
+name_compare <- cbind(moby$name, sales1$Name[match_loc])
+moby$global_sales1 <- sales1$Global_Sales[match_loc]
+
+#Min sales value - replace zero values with half the min nonzero value
+paste("sales1, min sales value = ", min(moby$global_sales1, na.rm=T))
+paste("sales1, min nonzero sales value = ", min(moby$global_sales1[moby$global_sales1>0], na.rm=T))
+if(min(moby$global_sales1, na.rm=T)==0){
+  moby$global_sales1[moby$global_sales2==0] <- min(moby$global_sales1[moby$global_sales1>0], na.rm=T)/2
+}
+
+#calculate annual sales
+moby$global_sales1_annual <- moby$global_sales1/(2016-moby$year)
+
+#log annual sales
+moby$log_global_sales1_annual <- log10(moby$global_sales1_annual)+6
+
+#N of observations with valid sales data
+paste("sales1, proportion with sales data = ", round(sum(!is.na(name_compare[,2]))/n_games, digits = 2))
+```
+
+Sales 2
+```{r}
+#It seems that "Total Shipped" and "Global Sales" is the same, and it is in units sold, in millions. Not data about sales in dollars. (Checked with Grand Theft Auto V).
+#Missing data of "Total Shipped" is actually "Global Sales".
+
+sales2$new_total_shipped <- sales2$Total_Shipped
+sales2$new_total_shipped[is.na(sales2$new_total_shipped)] <- sales2$Global_Sales[is.na(sales2$new_total_shipped)]
+
+n_games <- dim(moby)[1]
+match_loc<-matrix(nrow=n_games, ncol=1)
+
+#match game titles from main data and sales data 1
+for (i in 1:n_games) {
+  #if(i/100==trunc(i/100)){print(i)}
+  name <- moby$name[i]
+  match_loc[i] <- match(name, sales2$Name)
+}
+
+#add sales data at the matched observation
+name_compare <- cbind(moby$name, sales2$Name[match_loc])
+moby$global_sales2 <- sales2$new_total_shipped[match_loc]
+
+#Min sales value - replace zero values with half the min nonzero value
+paste("sales2, min sales value = ", min(moby$global_sales2, na.rm=T))
+paste("sales2, min nonzero sales value = ", min(moby$global_sales2[moby$global_sales2>0], na.rm=T))
+if(min(moby$global_sales2, na.rm=T)==0){
+  moby$global_sales2[moby$global_sales2==0] <- min(moby$global_sales2[moby$global_sales2>0], na.rm=T)/2
+}
+
+
+#calculate annual sales, in millions of units
+moby$global_sales2_annual <- moby$global_sales2/(2016-moby$year)
+
+#log annual sales, in units
+moby$log_global_sales2_annual <- log10(moby$global_sales2_annual)+6
+
+#N of observations with valid sales data
+paste("sales2, proportion with sales data = ", round(sum(!is.na(name_compare[,2]))/n_games, digits = 2))
+```
+
+Sales 2 for full data
+```{r}
+#It seems that "Total Shipped" and "Global Sales" is the same, and it is in units sold, in millions. Not data about sales in dollars. (Checked with Grand Theft Auto V).
+#Missing data of "Total Shipped" is actually "Global Sales".
+
+sales2$new_total_shipped <- sales2$Total_Shipped
+sales2$new_total_shipped[is.na(sales2$new_total_shipped)] <- sales2$Global_Sales[is.na(sales2$new_total_shipped)]
+
+n_games <- dim(full)[1]
+match_loc<-matrix(nrow=n_games, ncol=1)
+
+#match game titles from main data and sales data 1
+for (i in 1:n_games) {
+  #if(i/100==trunc(i/100)){print(i)}
+  name <- full$name[i]
+  match_loc[i] <- match(name, sales2$Name)
+}
+
+#add sales data at the matched observation
+name_compare <- cbind(full$name, sales2$Name[match_loc])
+full$global_sales2 <- sales2$new_total_shipped[match_loc]
+
+#Min sales value - replace zero values with half the min nonzero value
+paste("sales2, min sales value = ", min(full$global_sales2, na.rm=T))
+paste("sales2, min nonzero sales value = ", min(full$global_sales2[full$global_sales2>0], na.rm=T))
+if(min(full$global_sales2, na.rm=T)==0){
+  full$global_sales2[full$global_sales2==0] <- min(full$global_sales2[full$global_sales2>0], na.rm=T)/2
+}
+
+
+#calculate annual sales, in millions of units
+full$global_sales2_annual <- full$global_sales2/(2016-full$year)
+
+#log annual sales, in units
+full$log_global_sales2_annual <- log10(full$global_sales2_annual)+6
+
+#N of observations with valid sales data
+paste("sales2, proportion with sales data = ", round(sum(!is.na(name_compare[,2]))/n_games, digits = 2))
+```
+
+
+Sales 3
+```{r}
+n_games <- dim(moby)[1]
+match_loc<-matrix(nrow=n_games, ncol=1)
+
+#match game titles from main data and sales data 1
+for (i in 1:n_games) {
+  #if(i/100==trunc(i/100)){print(i)}
+  name <- moby$name[i]
+  match_loc[i] <- match(name, sales3$Name)
+}
+
+#add sales data at the matched observation
+name_compare <- cbind(moby$name, sales3$Name[match_loc])
+moby$global_sales3 <- sales3$Global_Sales[match_loc]
+
+#Min sales value - replace zero values with half the min nonzero value
+paste("sales3, min sales value = ", min(moby$global_sales3, na.rm=T))
+paste("sales3, min nonzero sales value = ", min(moby$global_sales3[moby$global_sales3>0], na.rm=T))
+if(min(moby$global_sales3, na.rm=T)==0){
+  moby$global_sales3[moby$global_sales3==0] <- min(moby$global_sales3[moby$global_sales3>0], na.rm=T)/2
+}
+
+#calculate annual sales
+moby$global_sales3_annual <- moby$global_sales3/(2016-moby$year)
+
+#log annual sales
+moby$log_global_sales3_annual <- log10(moby$global_sales3_annual)+6
+
+#N of observations with valid sales data
+paste("sales3, proportion with sales data = ", round(sum(!is.na(name_compare[,2]))/n_games, digits = 2))
+```
+
+
+Sales data from source 1 and source 3 are identical. Sales 2 has the largest coverage
+```{r, fig.width = 4, fig.height = 4}
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...) {
+    usr <- par("usr")
+    on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    Cor <- abs(cor(x, y, use="complete.obs")) # Remove abs function if desired
+    txt <- paste0(prefix, format(c(Cor, 0.123456789), digits = digits)[1])
+    if(missing(cex.cor)) {
+        cex.cor <- 0.4 / strwidth(txt)
+    }
+    text(0.5, 0.5, txt,
+         cex = 1 + cex.cor * Cor) # Resize the text by level of correlation
+}
+
+
+df <- data.frame(moby$global_sales1,moby$global_sales2,moby$global_sales3)
+colnames(df) <- c("sales 1", "sales 2", "sales 3")
+#pairs(df)
+suppressWarnings({
+pairs(df,
+      upper.panel = panel.cor,    # Correlation panel
+      lower.panel = panel.smooth)
+})
+```
+
+
+Big moby user score match
+```{r}
+n_games <- dim(moby)[1]
+
+match_loc<-matrix(nrow=n_games, ncol=1)
+
+#match game titles from main data and big moby dataset
+for (i in 1:n_games) {
+  #if(i/100==trunc(i/100)){print(i)}
+  name <- moby$name[i]
+  match_loc[i] <- match(name, big_moby$game_name)
+}
+
+#add user score data at the matched observation
+name_compare <- cbind(moby$name, big_moby$game_name[match_loc])
+paste("from big moby, proportion mathed = ", round(sum(!is.na(name_compare[,2]))/n_games, digits = 2))
+
+#add user score to those matched
+moby$user_score <- big_moby$user_score_mean[match_loc]
+paste("from big moby, proportion with user score = ", round(sum(table(moby$user_score))/n_games, digits = 2))
+```
+
+Generate a variables list
+```{r}
+var_list <- cbind(colnames(moby))
+```
+
+
+Creating inclusion variables with user-friendly names
+```{r}
+moby$mixing <- moby$assortativity_rev_z
+moby$bonding <- moby$weighted_cross_edges_ratio_z
+moby$incorporating <- moby$female_coreness_log_z
+moby$mixing_z <- (moby$mixing-min(moby$mixing, na.rm=T))/sd(moby$mixing)
+moby$bonding_z <- (moby$bonding-min(moby$bonding, na.rm=T))/sd(moby$bonding)
+moby$incorporating_z <- (moby$incorporating-min(moby$incorporating, na.rm=T))/sd(moby$incorporating)
+moby$combined <- moby$mixing*moby$bonding*moby$incorporating
+```
+
+Firm-level dataset from means of game level values
+```{r, message=FALSE, warning = FALSE}
+#developer firm level aggregation
+moby_dev_firm_level <- aggregate(moby, list(dev_firm = moby$org_dev), mean)
+```
+
+
+Merge inclusion into 'full' dataset
+```{r}
+inc_data <- moby[,c("game_id", "blau2", "ratio_core", "num_countries", "mixing", "bonding", "incorporating", "combined")]
+
+full <- left_join(full, inc_data, by='game_id')
+
+full$selection <- 0
+full$selection[!is.na(full$num_countries)] <- 1
+
+full$num_countries <- rowSums(full[,129:191])
+full$ratio_core[is.na(full$ratio_core)] <- 0
+full$blau2[is.na(full$blau2)] <- 0
+full$mixing[is.na(full$mixing)] <- 0
+full$bonding[is.na(full$bonding)] <- 0
+full$incorporating[is.na(full$incorporating)] <- 0
+full$combined[is.na(full$combined)] <- 0
+```
+
+Save environment
+```{r}
+save.image(file='Data_prep.RData')
+```
+
+
+

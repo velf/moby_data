@@ -1,0 +1,1233 @@
+---
+title: "MOBY: 2. Descriptive and bivariate"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+###Preparations
+
+Libraries \ read in libraries
+
+```{r, results='hide'}
+util_libraries <- c("foreign", "reshape2", "stargazer", "arm", "plyr", "tidyverse", "stringr", "qdapRegex", "GGally", "progress", "pracma", "lubridate", "DescTools", "Matrix.utils", "irr", "psych", 'gtools', "Hmisc", "colorspace")
+vis_libraries  <- c("ggplot2", "ggrepel", "grid", "gridExtra", "RColorBrewer", "scales", "corrplot", "ggeffects", "cowplot", "plot.matrix", "corrgram", "ggnetwork", "vioplot", "dotwhisker", "sjPlot", "sjlabelled", "sjmisc", "plot3D", "ggpubr", "ggExtra", "ggraph")
+stat_libraries <- c("network", "sna", "igraph", "moments", "nortest", "MASS", "randomForest", "sandwich", "lmtest", "gmodels", "margins", "sampleSelection", "pROC", "pscl",  "pwr", "relaimpo", "lme4", "plm", "caret", "ResourceSelection", "rvest", "cluster", "factoextra", "outliers", "acss", 'asbio','akima', 'plotly', 'factoextra', 'interactions', 'robustbase', "sandwich", "modelr", "broom", "mgcv", "stringdist", "sem", "lavaan", "corrr", "misty")
+
+#install.packages(util_libraries)
+#install.packages(vis_libraries)
+#install.packages(stat_libraries)
+
+for (l in 1:length(util_libraries)){ library(util_libraries[l], character.only = TRUE)}
+for (l in 1:length(vis_libraries)){ library(vis_libraries[l], character.only = TRUE)}
+for (l in 1:length(stat_libraries)){ library(stat_libraries[l], character.only = TRUE)}
+```
+
+Graph theme set
+
+```{r}
+theme_set(theme_bw())
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+```
+
+Clear the workspace
+
+```{r}
+rm(list=ls())
+```
+
+###Read data
+
+Read worspace
+```{r}
+load('Data_prep.RData')
+```
+
+
+#Descriptive figure for trends
+
+```{r}
+moby$combined_raw <- moby$mixing*moby$bonding*moby$incorporating
+
+mean(moby$prop_women)
+mean(moby$combined_raw)
+
+mean_propw <- ci.mean(full$prop_women, group=full$year)$result
+mean_inclusion <- ci.mean(moby$combined_raw , group=moby$year)$result
+
+mean_propw$group <- as.numeric(mean_propw$group)
+mean_inclusion$group <- as.numeric(mean_inclusion$group)
+```
+
+```{r, fig.width = 2.5, fig.height = 2.5}
+
+#Color set
+hi_color = "#b4de75"
+lo_color = "#69629a"
+third_color="darkorange"
+fourth_color="deepskyblue2"
+
+m_top <- 2
+m_left <-0
+m_bottom <- 0
+m_right <- 0
+ts <- 3.2
+tit_s <- 11
+iqr_alpha <- 0.07
+ribbon_alpha <- 0.33
+
+#Function for axis tick label number formatting
+#--------add as:-----scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)----------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+
+min_y <- min(min(mean_propw$m), min(mean_inclusion$m))
+max_y <- max(max(mean_propw$m), max(mean_inclusion$m))
+
+
+
+desc_trends <- ggplot()+
+
+  #gender diversity
+  geom_line(data=mean_propw,   aes(x=group, y=m), color=lo_color)+
+  geom_ribbon(data=mean_propw, aes(group, ymin=low, ymax=upp),alpha=ribbon_alpha, fill=lo_color)+
+  geom_smooth(data=mean_propw,   aes(x=group, y=m), method = "lm", formula = y ~ x, color=lo_color, size = 0.3, linetype = 2, se = FALSE)+
+
+  #inclusion
+  geom_line(data=mean_inclusion,   aes(x=group, y=m), color=hi_color)+
+  geom_ribbon(data=mean_inclusion, aes(group, ymin=low, ymax=upp),alpha=ribbon_alpha, fill=hi_color)+
+  geom_smooth(data=mean_inclusion,   aes(x=group, y=m), method = "lm", formula = y ~ x, color=hi_color, size = 0.3, linetype = 2, se = FALSE)+
+  
+  annotate(geom="text", x=1995,    y=0.176, label="Proportion of\nfemale\ndevelopers", lineheight = .8,  col="black", size=2.9, hjust = 0, alpha = 1) +
+    #geom_segment(aes(y=0.85,    x=0.25, yend = 0.81, xend = 0.28),size=0.6, col = hi_color, alpha=0.66, linetype=3) +
+  
+  annotate(geom="text", x=2006,    y=0.08, label="Combined\ninclusion", lineheight = .8,   col="black", size=2.9, hjust = 1, alpha = 1) +
+    #geom_segment(aes(y=0.72,    x=.25, yend = 0.76, xend = .28),size=0.6, col = lo_color, alpha=0.66, linetype=3) +
+  
+  #axes formatting
+  scale_y_continuous(
+                     labels = dropLeadingZero,
+                     expand = c(0.001,0.001), 
+                     breaks = c(0.06, 0.09, 0.12, 0.15, 0.18), 
+                     name="") +
+  scale_x_continuous(   breaks = mean_propw$group[seq(1, length(mean_propw$group), by = 2)],
+                      expand = c(0.001,0.001), 
+                      name="") +
+
+  
+
+  #theme
+  theme(aspect.ratio=1, 
+            panel.grid.major.x = element_line(color = "gray50",size = 0.1,linetype = 1),
+            panel.grid.major.y = element_line(color = "gray50",size = 0.1,linetype = 1),
+            panel.grid.minor = element_blank(), 
+            panel.background = element_blank(), 
+            panel.border = element_rect(colour = "black", 
+                                        fill=NA, 
+                                        size=0.2),
+            legend.position = c(0.2, 0.3),
+            plot.title = element_text(size = tit_s, face = "bold", colour = "black"),
+            #axis.ticks.y = element_blank(),
+            axis.title.y = element_text(size = 11, colour = "black"),
+            axis.text.x = element_text(size = 9, colour = "black", angle = 90, vjust = 0.5, hjust=1),
+            axis.text.y = element_text(size = 9, colour = "black"),
+            plot.margin = unit(c(m_top,m_right,m_bottom,m_left), "mm")
+            )
+
+
+desc_trends
+```
+
+```{r}
+ggsave("desc_trends.pdf", desc_trends, width = 2.5, height = 2.5)
+```
+
+Significance of descriptive trends
+```{r}
+summary(lm(prop_women ~ year, data = full))
+
+summary(lm(m ~ as.numeric(group), data = mean_propw))
+```
+
+
+
+
+
+###Bivariate plots
+
+Pairwise LOESS plots of diversity and inclusion associated to outcome variables
+```{r, fig.width = 7.5, fig.height = 7}
+#Color set
+hi_color = "#b4de75"
+lo_color = "#69629a"
+third_color="darkorange"
+fourth_color="deepskyblue2"
+
+#Select the default fill color
+c=lo_color
+
+#Span for LOESS curves
+sp=1
+
+
+#Function for axis tick label number formatting
+#--------add as:-----scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)----------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+
+#Plot theme specification
+my_theme <-   theme(aspect.ratio=1, 
+        legend.position = "none",
+        #panel.grid.major = element_blank(), 
+        #panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.2),
+        #legend.position = c(0.2, 0.3),
+        plot.title = element_text(size = 11, face = "bold", colour = "black"),
+        #axis.ticks = element_line(colour = "black", size = 0.1),
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.text.x = element_text(size = 9, colour = "black"),
+        axis.text.y = element_text(size = 9, colour = "black"),
+        panel.grid.major = element_line(size=0.2),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.margin = unit(c(3,3,3,3), "points")
+  )
+
+
+#Plots
+
+div_dist <- ggplot() +
+  stat_smooth(data=moby, aes(x=blau2, y=game_dist_prev5yr), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    scale_y_continuous(expand = c(0,0), labels = dropLeadingZero) +
+  
+    labs(y="Distinctiveness") +
+    labs(x="Diversity") +
+
+    my_theme
+
+
+div_rev <- ggplot() +
+  stat_smooth(data=moby[moby$rank_avg>0,], aes(x=blau2, y=rank_avg), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="Review") +
+    labs(x="Diversity") +
+  
+my_theme
+
+
+div_user <- ggplot() +
+  stat_smooth(data=moby[moby$user_score>0,], aes(x=blau2, y=user_score), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="User score") +
+    labs(x="Diversity") +
+  
+my_theme
+
+
+
+div_sales <- ggplot() +
+  stat_smooth(data=moby, aes(x=blau2, y=log_global_sales2_annual), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="Sales") +
+    labs(x="Diversity") +
+  
+my_theme
+
+
+
+dist_rev <- ggplot() +
+  stat_smooth(data=moby[moby$rank_avg>0,], aes(x=game_dist_prev5yr, y=rank_avg), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="Review") +
+    labs(x="Distinctiveness") +
+  
+my_theme
+
+dist_user <- ggplot() +
+  stat_smooth(data=moby[moby$user_score>0,], aes(x=game_dist_prev5yr, y=user_score), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="User score") +
+    labs(x="Distinctiveness") +
+  
+my_theme
+
+dist_sales <- ggplot() +
+  stat_smooth(data=moby, aes(x=game_dist_prev5yr, y=log_global_sales2_annual), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="Sales") +
+    labs(x="Distinctiveness") +
+  
+my_theme
+
+
+
+rev_user <- ggplot() +
+  stat_smooth(data=moby[moby$rank_avg>0 & moby$user_score>0,], aes(x=rank_avg, y=user_score), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="User score") +
+    labs(x="Review") +
+  
+my_theme
+
+
+user_rev <- ggplot() +
+  stat_smooth(data=moby[moby$rank_avg>0 & moby$user_score>0,], aes(y=rank_avg, x=user_score), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="Review") +
+    labs(x="User score") +
+  
+my_theme
+
+
+
+rev_sales <- ggplot() +
+  stat_smooth(data=moby[moby$rank_avg>49,], aes(x=rank_avg, y=log_global_sales2_annual), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 5)) +
+    scale_y_continuous(expand = c(0,0)) +
+    #coord_cartesian(ylim=c(3.75, 5.3)) +
+
+  
+    labs(y="Sales") +
+    labs(x="Review") +
+  
+my_theme
+
+rev_sales2 <- ggplot() +
+  stat_smooth(data=moby[moby$rank_avg>49,], aes(x=rank_avg, y=log_global_sales2_annual), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 5)) +
+    scale_y_continuous(expand = c(0,0)) +
+    coord_cartesian(ylim=c(3.75, 5.3)) +
+
+  
+    labs(y="Sales") +
+    labs(x="Review") +
+  
+my_theme
+
+
+user_sales <- ggplot() +
+  stat_smooth(data=moby[moby$user_score>0,], aes(x=user_score, y=log_global_sales2_annual), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 3)) +
+    scale_y_continuous(expand = c(0,0)) +
+    #coord_cartesian(ylim=c(3.75, 5.3)) +
+  
+    labs(y="Sales") +
+    labs(x="User score") +
+  
+my_theme
+
+user_sales2 <- ggplot() +
+  stat_smooth(data=moby[moby$user_score>0,], aes(x=user_score, y=log_global_sales2_annual), method = "loess", formula = y ~ x, span=sp, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=c, fill=c) +
+    scale_x_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 3)) +
+    scale_y_continuous(expand = c(0,0)) +
+    coord_cartesian(ylim=c(3.75, 5.3)) +
+  
+    labs(y="Sales") +
+    labs(x="User score") +
+  
+my_theme
+
+
+#Draw thge plots
+loess_graphs <- grid.arrange(
+                  div_dist,
+                  div_rev,
+                  div_user,
+                  div_sales,
+                  
+                  dist_rev,
+                  dist_user,
+                  dist_sales,
+                  
+                  user_rev,
+                  user_sales,
+                  
+                  rev_sales,
+                  
+                  layout_matrix = rbind(c(1, 2, 3, 4),
+                                        c(NA, 5, 6, 7),
+                                        c(NA, NA, 8, 9),
+                                        c(NA, NA, NA, 10)
+                                        )
+                  
+                  )
+```
+
+```{r}
+ggsave("loess_graphs.pdf", loess_graphs, width = 6, height = 6)
+```
+
+
+
+
+
+
+
+Bivariate LOESS plots of the interaction of Diversity and Inclusion metrics WITH Distinctiveness
+
+```{r, fig.width = 5, fig.height = 2.5}
+
+#Colors
+hi_color = "#b4de75"
+lo_color = "#69629a"
+third_color="darkorange"
+fourth_color="deepskyblue2"
+
+#Plot theme specification
+my_theme <-     theme(aspect.ratio=1, 
+        legend.position = "none",
+        panel.grid.major = element_line(size=0.2), 
+        #panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.2),
+        #legend.position = c(0.2, 0.3),
+        plot.title = element_text(size = 11, face = "bold", colour = "black"),
+        #axis.ticks = element_line(colour = "black", size = 0.1),
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.text.x = element_text(size = 9, colour = "black"),
+        axis.text.y = element_text(size = 9, colour = "black"),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "points")
+  )
+
+
+
+div_inclusions_dist <- ggplot() +
+  stat_smooth(data=moby, aes(x=blau2*mixing, y=game_dist_prev5yr), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=lo_color, fill=lo_color) +
+  stat_smooth(data=moby, aes(x=blau2*bonding, y=game_dist_prev5yr), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=hi_color, fill=hi_color) +
+  stat_smooth(data=moby, aes(x=blau2*incorporating, y=game_dist_prev5yr), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=third_color, fill=third_color) +
+  
+  
+  #annotate(geom="text", x=.015,    y=0.893, label="Mixing", lineheight = .8,  col=lo_color, size=2.9, hjust = 0, alpha = 1) +
+  #annotate(geom="text", x=.015,    y=0.883, label="Bonding", lineheight = .8,  col=hi_color, size=2.9, hjust = 0, alpha = 1) +
+  #annotate(geom="text", x=.015,    y=0.873, label="Incorporating", lineheight = .8,  col=third_color, size=2.9, hjust = 0, alpha = 1) +
+  
+  annotate(geom="text", x=.25,    y=0.815, label="Div. \u00D7 Mix.", lineheight = .8,  col=lo_color, size=3, hjust = 0, alpha = 1, angle = 55) +
+  annotate(geom="text", x=.15,    y=0.81, label="Div. \u00D7 Bond.", lineheight = .8,  col=hi_color, size=3, hjust = 0, alpha = 1, angle = 45) +
+  annotate(geom="text", x=.20,    y=0.791, label="Div. \u00D7 Incorp.", lineheight = .8,  col=third_color, size=3, hjust = 0, alpha = 1, angle = 21) +
+  
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    coord_cartesian(xlim=c(0,0.35), ylim = c(0.78,0.9)) +
+    scale_y_continuous(expand = c(0,0), labels = dropLeadingZero) +
+  
+    labs(y="Distinctiveness") +
+    labs(x="Diversity \u00D7 Inclusion") +
+  
+my_theme
+
+
+
+
+div_inclusions_rev <- ggplot() +
+  stat_smooth(data=moby[moby$rank_avg>0,], aes(x=blau2*mixing, y=rank_avg), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=lo_color, fill=lo_color) +
+  stat_smooth(data=moby[moby$rank_avg>0,], aes(x=blau2*bonding, y=rank_avg), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=hi_color, fill=hi_color) +
+  stat_smooth(data=moby[moby$rank_avg>0,], aes(x=blau2*incorporating, y=rank_avg), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.2, na.rm=TRUE, color=third_color, fill=third_color) +
+  
+  #annotate(geom="text", x=.015,    y=0.893, label="Mixing", lineheight = .8,  col=lo_color, size=2.9, hjust = 0, alpha = 1) +
+  #annotate(geom="text", x=.015,    y=0.883, label="Bonding", lineheight = .8,  col=hi_color, size=2.9, hjust = 0, alpha = 1) +
+  #annotate(geom="text", x=.015,    y=0.873, label="Incorporating", lineheight = .8,  col=third_color, size=2.9, hjust = 0, alpha = 1) +
+  
+  annotate(geom="text", x=.04,    y=72.8, label="Div. \u00D7 Mix.", lineheight = .8,  col=lo_color, size=3, hjust = 0, alpha = 1, angle = 0) +
+  annotate(geom="text", x=.12,    y=65.8, label="Div. \u00D7 Bond.", lineheight = .8,  col=hi_color, size=3, hjust = 0, alpha = 1, angle = 0) +
+  annotate(geom="text", x=.17,    y=71.7, label="Div. \u00D7 Incorp.", lineheight = .8,  col=third_color, size=3, hjust = 0, alpha = 1, angle = 0) +
+  
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    coord_cartesian(xlim=c(0,0.35), ylim=c(60,80)) +
+    scale_y_continuous(expand = c(0,0), labels = dropLeadingZero) +
+  
+    labs(y="Review") +
+    labs(x="Diversity \u00D7 Inclusion") +
+  
+ my_theme
+
+
+grid.arrange(div_inclusions_dist, div_inclusions_rev, nrow=1)
+
+```
+
+###Correlations path diagram 
+Data preparation
+```{r}
+#Calculate interactions as variables
+moby$div_mixing  <- moby$blau2*moby$mixing
+moby$div_bonding <- moby$blau2*moby$bonding 
+moby$div_incorporating <- moby$blau2*moby$incorporating
+
+#Make data frame
+df <- data.frame(cbind(moby$blau2*moby$mixing, moby$blau2*moby$bonding, moby$blau2*moby$incorporating, moby$game_dist_prev5yr, moby$rank_avg, moby$log_global_sales2_annual))
+colnames(df) <- c("Div. x Mix.", "Div. x Bond.", "Div. x Incorp.", "Dist.", "Review", "Sales")
+df$Review[df$Review==0] <- NA
+
+#Correlations
+cor_results <- rcorr(as.matrix(df),type="pearson")
+```
+
+Plotting
+```{r, fig.width = 9, fig.height = 3}
+#Calculate correlations
+tidy_cors <- df %>% 
+  correlate() %>% 
+  stretch()
+
+#Create graph, filtering very small and very large correlations to take out ties among interactions
+graph_cors <- tidy_cors %>%
+  filter(abs(r) > .005 & abs(r) < .5) %>%
+  graph_from_data_frame(directed = FALSE)
+
+#Arrange nodes
+coord_file <- data.frame(y=NA, x=NA)
+coord_file[1,] <- c(1,.5) 
+coord_file[2,] <- c(.5,.5)
+coord_file[3,] <- c(0,.5)
+coord_file[4,] <- c(.5,3)
+coord_file[5,] <- c(.5,4.5)
+coord_file[6,] <- c(.5,6)
+```
+
+
+```{r, fig.width = 4, fig.height = 4.5}
+#Color selection for positive and negative ties
+hi_color="midnightblue"
+lo_color="red4"
+
+#Creating grades of colors
+lo_color_1 <- lighten(lo_color, .8)
+lo_color_2 <- lighten(lo_color, .6)
+lo_color_3 <- lighten(lo_color, .4)
+lo_color_4 <- lighten(lo_color, .2)
+lo_color_5 <- lo_color
+lo_color_6 <- darken(lo_color, .2)
+lo_color_7 <- darken(lo_color, .4)
+lo_color_8 <- darken(lo_color, .6)
+lo_color_9 <- darken(lo_color, .8)
+
+hi_color_1 <- lighten(hi_color, .8)
+hi_color_2 <- lighten(hi_color, .6)
+hi_color_3 <- lighten(hi_color, .4)
+hi_color_4 <- lighten(hi_color, .2)
+hi_color_5 <- hi_color
+hi_color_6 <- darken(hi_color, .2)
+hi_color_7 <- darken(hi_color, .4)
+hi_color_8 <- darken(hi_color, .6)
+hi_color_9 <- darken(hi_color, .8)
+
+#-------------scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)-----------------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+
+#Plotting
+corr_arcs <- ggraph(graph_cors, coord_file) +
+  geom_edge_arc(aes(edge_alpha = (0.9*r-(abs(r)^0.6)), edge_width = (abs(r)^0.33)/8, color = r), strength=0.12, lineend = "round", linejoin = "round") +
+  scale_edge_width(range=c(0.66, 3)) +
+  guides(edge_alpha = "none", edge_width = "none", edge_colourbar=guide_colourbar(title="R")) +
+   scale_edge_colour_gradientn(name="r", limits = c(-.3, .3), labels = dropLeadingZero, 
+          colors = c(lo_color_9,lo_color_9,lo_color_9,lo_color_9,lo_color_9,lo_color_9,lo_color_8,lo_color_8,lo_color_8,lo_color_8,lo_color_8,lo_color_8,
+                     lo_color_7,lo_color_7,lo_color_7,lo_color_7,lo_color_7,lo_color_7,lo_color_6,lo_color_6,lo_color_6,lo_color_6,lo_color_6,lo_color_6,
+                     lo_color_5,lo_color_5,lo_color_5,lo_color_5,lo_color_5,lo_color_5,lo_color_4,lo_color_4,lo_color_4,lo_color_4,lo_color_4,lo_color_4,
+                     lo_color_3,lo_color_3,lo_color_3,lo_color_3,lo_color_3,lo_color_3,lo_color_2,lo_color_2,lo_color_2,lo_color_2,lo_color_2,lo_color_2,
+                     lo_color_1,lo_color_1,lo_color_1,lo_color_1,lo_color_1,lo_color_1,
+                     "white",
+                     hi_color_1, hi_color_1,hi_color_1, hi_color_1,hi_color_1, hi_color_1, 
+                     hi_color_2, hi_color_2,hi_color_2, hi_color_2,hi_color_2, hi_color_2,hi_color_3, hi_color_3,hi_color_3, hi_color_3,hi_color_3, hi_color_3,
+                     hi_color_4, hi_color_4,hi_color_4, hi_color_4,hi_color_4, hi_color_4,hi_color_5, hi_color_5,hi_color_5, hi_color_5,hi_color_5, hi_color_5,
+                     hi_color_6, hi_color_6,hi_color_6, hi_color_6,hi_color_6, hi_color_6,hi_color_7, hi_color_7,hi_color_7, hi_color_7,hi_color_7, hi_color_7,
+                     hi_color_8, hi_color_8,hi_color_8, hi_color_8,hi_color_8, hi_color_8,hi_color_9, hi_color_9,hi_color_9, hi_color_9,hi_color_9, hi_color_9)) +
+  
+  
+  geom_node_point(shape=21, color = "black", fill="white", stroke=.5, size = 2) +
+  geom_node_text(aes(label = name), repel = F, hjust=0.1, angle=0, size = 3.75, colour = "black", 
+                 position = position_nudge(x = c(-.15, -.15, -.15, -.2, -.27, -.12),
+                                           y = c(-.04, -.04, -.04, -.04, -.04, -.04))
+                 ) +
+  coord_cartesian(clip = "off", xlim=c(0,6.5), ylim=c(-0.05,1.15)) +
+  
+  
+  theme(      aspect.ratio=1,
+              plot.margin = unit(c(0,0,0,0), "points"),
+              panel.background = element_blank(), 
+              #panel.border = element_blank(),
+              panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.1),
+              legend.position = c(.9, .81),
+              legend.key.height = unit(.45, 'cm'),
+              legend.key.width = unit(.33, 'cm'),
+              legend.text=element_text(size = 9, colour = "black", hjust=1),
+              legend.title = element_text(size = 11, colour = "black", face = "bold.italic"),
+              legend.background=element_blank(),
+              plot.title = element_text(size = 11, face = "bold", colour = "black")
+              )
+
+#Draw plot
+corr_arcs
+```
+
+```{r, fig.width = 2.5, fig.height = 2.5}
+#Color selection for positive and negative ties
+hi_color="midnightblue"
+lo_color="red4"
+
+#Creating grades of colors
+lo_color_1 <- lighten(lo_color, .8)
+lo_color_2 <- lighten(lo_color, .6)
+lo_color_3 <- lighten(lo_color, .4)
+lo_color_4 <- lighten(lo_color, .2)
+lo_color_5 <- lo_color
+lo_color_6 <- darken(lo_color, .2)
+lo_color_7 <- darken(lo_color, .4)
+lo_color_8 <- darken(lo_color, .6)
+lo_color_9 <- darken(lo_color, .8)
+
+hi_color_1 <- lighten(hi_color, .8)
+hi_color_2 <- lighten(hi_color, .6)
+hi_color_3 <- lighten(hi_color, .4)
+hi_color_4 <- lighten(hi_color, .2)
+hi_color_5 <- hi_color
+hi_color_6 <- darken(hi_color, .2)
+hi_color_7 <- darken(hi_color, .4)
+hi_color_8 <- darken(hi_color, .6)
+hi_color_9 <- darken(hi_color, .8)
+
+#-------------scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)-----------------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+
+#Plotting
+corr_arcs_sm <- ggraph(graph_cors, coord_file) +
+  geom_edge_arc(aes(edge_alpha = (0.9*r-(abs(r)^0.6)), edge_width = (abs(r)^0.33)/8, color = r), strength=0.12, lineend = "round", linejoin = "round") +
+  scale_edge_width(range=c(0.66, 3)) +
+  guides(edge_alpha = "none", edge_width = "none", edge_colourbar=guide_colourbar(title="R")) +
+   scale_edge_colour_gradientn(name="r", limits = c(-.3, .3), labels = dropLeadingZero, 
+          colors = c(lo_color_9,lo_color_9,lo_color_9,lo_color_9,lo_color_9,lo_color_9,lo_color_8,lo_color_8,lo_color_8,lo_color_8,lo_color_8,lo_color_8,
+                     lo_color_7,lo_color_7,lo_color_7,lo_color_7,lo_color_7,lo_color_7,lo_color_6,lo_color_6,lo_color_6,lo_color_6,lo_color_6,lo_color_6,
+                     lo_color_5,lo_color_5,lo_color_5,lo_color_5,lo_color_5,lo_color_5,lo_color_4,lo_color_4,lo_color_4,lo_color_4,lo_color_4,lo_color_4,
+                     lo_color_3,lo_color_3,lo_color_3,lo_color_3,lo_color_3,lo_color_3,lo_color_2,lo_color_2,lo_color_2,lo_color_2,lo_color_2,lo_color_2,
+                     lo_color_1,lo_color_1,lo_color_1,lo_color_1,lo_color_1,lo_color_1,
+                     "white",
+                     hi_color_1, hi_color_1,hi_color_1, hi_color_1,hi_color_1, hi_color_1, 
+                     hi_color_2, hi_color_2,hi_color_2, hi_color_2,hi_color_2, hi_color_2,hi_color_3, hi_color_3,hi_color_3, hi_color_3,hi_color_3, hi_color_3,
+                     hi_color_4, hi_color_4,hi_color_4, hi_color_4,hi_color_4, hi_color_4,hi_color_5, hi_color_5,hi_color_5, hi_color_5,hi_color_5, hi_color_5,
+                     hi_color_6, hi_color_6,hi_color_6, hi_color_6,hi_color_6, hi_color_6,hi_color_7, hi_color_7,hi_color_7, hi_color_7,hi_color_7, hi_color_7,
+                     hi_color_8, hi_color_8,hi_color_8, hi_color_8,hi_color_8, hi_color_8,hi_color_9, hi_color_9,hi_color_9, hi_color_9,hi_color_9, hi_color_9)) +
+  
+  
+  geom_node_point(shape=21, color = "black", fill="white", stroke=.5, size = 2) +
+  geom_node_text(aes(label = name), repel = F, hjust=0.1, angle=0, size = 3.1, colour = "black", 
+                 position = position_nudge(x = c(-.15, -.15, -.15, -.2, -.27, -.12),
+                                           y = c(-.07, -.07, -.07, -.07, -.07, -.07))
+                 ) +
+  coord_cartesian(clip = "off", xlim=c(0,7), ylim=c(-0.07,1.25)) +
+  
+  
+  
+  theme(      aspect.ratio=1,
+              plot.margin = unit(c(0,0,0,0), "points"),
+              panel.background = element_blank(), 
+              #panel.border = element_blank(),
+              panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.1),
+              legend.position = c(.84, .8),
+              legend.key.height = unit(.33, 'cm'),
+              legend.key.width = unit(.30, 'cm'),
+              legend.text=element_text(size = 8, colour = "black", hjust=1),
+              legend.title = element_text(size = 9, colour = "black", face = "bold.italic"),
+              legend.background=element_blank(),
+              plot.title = element_text(size = 11, face = "bold", colour = "black")
+              )
+
+#Draw plot
+corr_arcs_sm
+```
+
+
+```{r}
+ggsave("corr_arcs.pdf", corr_arcs, width = 2.5, height = 2.5)
+```
+
+
+
+
+
+
+```{r}
+c_mat <- cor_results$r
+p_mat <- cor_results$P
+
+diag(c_mat) <- 0
+
+corr_plot <- corrplot(c_mat, method="color", type='full', tl.col = 'black', tl.cex=1)
+```
+
+
+
+
+Six plots version of the story how diversity x inclsuion leads to outcomes
+```{r, fig.width = 6, fig.height = 4}
+#Set small margin value
+sm=3
+
+#Plot
+six_plots <- grid.arrange(
+                                    div_inclusions_dist + labs(title="a") + theme(plot.margin = unit(c(sm,sm,sm,sm), "points")), 
+                                    dist_rev            + labs(title="b")+ theme(plot.margin = unit(c(sm,sm,sm,sm), "points")),
+                                    rev_sales           + labs(title="c")+ theme(plot.margin = unit(c(sm,sm,sm,sm), "points")),
+                                    div_inclusions_rev  + labs(title="d")+ theme(plot.margin = unit(c(sm,sm,sm,sm), "points")),
+                                    dist_sales          + labs(title="e")+ theme(plot.margin = unit(c(sm,sm,sm,sm), "points")),
+                                    corr_arcs           + labs(title="f", position = position_nudge(x=-200))+ theme(plot.title = element_text(hjust = 0.278), plot.margin = unit(c(sm,sm+12,sm+20,sm), "points")),
+                                    #widths = 2:1,
+                                    #rel_heights = c(1, 1/2, 1/2, 1/2, 1/2),
+                                    layout_matrix=rbind( 
+                                                        c(1,2,3), 
+                                                        c(4,5,6)
+                                                        )
+                                    )
+
+```
+
+
+```{r}
+ggsave("six_plots.pdf", six_plots, width = 6, height = 4)
+```
+
+Two plots version of the story how diversity x inclsuion leads to outcomes
+```{r, fig.width = 5, fig.height = 2.5}
+#Set small margin value
+sm=3
+
+#Plot
+two_plots <- grid.arrange(
+                                    div_inclusions_dist + labs(title="a") + theme(plot.margin = unit(c(sm,sm,sm,sm), "points")), 
+                                    corr_arcs           + labs(title="b") + theme(plot.margin = unit(c(sm,sm+10,sm+15,sm), "points")),
+                                    #widths = 1:1,
+                                    #heights = 1:1,
+                                    nrow=1
+                          )
+
+```
+```{r}
+ggsave("two_plots.pdf", two_plots, width = 5, height = 2.5)
+```
+
+Five plots version of the story how diversity x inclsuion leads to outcomes
+1: praparing the smaller plots subplot
+```{r, fig.width = 3, fig.height = 3}
+small_plots <- grid.arrange(
+                                    dist_rev + labs(title="b"), 
+                                    dist_user  + labs(title="d"),
+                                    rev_sales2 + labs(title="c"),
+                                    user_sales2 + labs(title="e"),
+                                    #widths = 2:1,
+                                    #rel_heights = c(1, 1/2, 1/2, 1/2, 1/2),
+                                    layout_matrix=rbind(c(1,3), c(2,4)))
+```
+2: assembling the larger plot and small subplot matrix
+```{r, fig.width = 6, fig.height = 3}
+success_graphs_small <-grid.arrange(div_inclusions_dist + labs(title="a"), 
+                                    small_plots,
+                                    #widths = 2:1,
+                                    #rel_heights = c(1, 1/2, 1/2, 1/2, 1/2),
+                                    layout_matrix=rbind(c(1,2)))
+```
+
+```{r}
+ggsave("success_graphs_small.pdf", success_graphs_small, width = 6, height = 3)
+```
+
+
+
+Relationship btw distinctiveness and review score differs by diversity X
+inclusion, filtered data
+
+```{r, fig.width = 2.5, fig.height = 2.5}
+
+
+#-------------scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)-----------------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+hi_color = "#b4de75"
+lo_color = "#69629a"
+
+
+
+
+
+moby$div_bottom50 <- moby$prop_women2<=median(moby$prop_women2, na.rm=T)
+moby$div_top50 <- moby$prop_women2>median(moby$prop_women2, na.rm=T)
+
+q <- quantile(moby$prop_women2, probs = c(1/3, 2/3), na.rm=T)
+moby$div_bottom33 <- moby$prop_women2<=q[1]
+moby$div_top33 <- moby$prop_women2>q[2]
+
+q <- quantile(moby$prop_women2, probs = c(1/4, 3/4), na.rm=T)
+moby$div_bottom25 <- moby$prop_women2<=q[1]
+moby$div_top25 <- moby$prop_women2>q[2]
+
+q <- quantile(moby$prop_women2, probs = c(1/10, 9/10), na.rm=T)
+moby$div_bottom10 <- moby$prop_women2<=q[1]
+moby$div_top10 <- moby$prop_women2>q[2]
+
+
+
+
+dist_div_rev_mobydata <- ggplot() +
+  
+stat_smooth(data=moby[moby$rank_avg>30 & moby$div_top50==T,], aes(x=game_dist_prev5yr, y=rank_avg), 
+            method = "loess", 
+            #method = "lm",
+            formula = y ~ x, 
+            span=1, 
+            se = T,size=0.5, alpha=0.5, na.rm=TRUE, color=hi_color, fill=hi_color) +  
+  
+stat_smooth(data=moby[moby$rank_avg>30 & moby$div_bottom50==T,], aes(x=game_dist_prev5yr, y=rank_avg), 
+            method = "loess", 
+            #method = "lm",
+            formula = y ~ x, 
+            span=1, 
+            se = T, size=0.5, alpha=0.2, na.rm=TRUE, color=lo_color, fill=lo_color) +
+  
+  annotate(geom="text", x=.66,    y=73, label="Female prop.\nlow 50%", lineheight = .8,  col=lo_color, size=3.5, hjust = 0, alpha = 1, angle = 0) +
+  annotate(geom="text", x=.69,    y=62.5, label="Female prop.\nhigh 50%", lineheight = .8,  col=hi_color, size=3.5, hjust = 0, alpha = 1, angle = 55) +
+
+  
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    coord_cartesian(ylim=c(61,77), xlim=c(.633, .93)) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="Review") +
+    labs(x="Distinctiveness") +
+  
+  theme(aspect.ratio=1, 
+        legend.position = "none",
+        panel.grid.major = element_line(size=0.2), 
+        #panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.2),
+        #legend.position = c(0.2, 0.3),
+        plot.title = element_text(size = 11, face = "bold", colour = "black"),
+        #axis.ticks = element_line(colour = "black", size = 0.1),
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.text.x = element_text(size = 9, colour = "black"),
+        axis.text.y = element_text(size = 9, colour = "black"),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank()
+  )
+
+
+
+dist_div_rev_mobydata
+```
+Relationship btw distinctiveness and review score differs by diversity X
+inclusion, full dataset
+```{r, fig.width = 2.5, fig.height = 2.5}
+
+
+#-------------scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)-----------------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+lo_color = hi_color_1
+hi_color = hi_color_9
+
+lo_label_color = "#69629a"
+hi_label_color = "#4f4973"
+
+
+
+
+
+full$div_bottom50 <- full$prop_women2<=median(full$prop_women2, na.rm=T)
+full$div_top50 <- full$prop_women2>median(full$prop_women2, na.rm=T)
+
+full$inc_bottom50 <- full$combined<=median(full$combined, na.rm=T)
+full$inc_top50 <- full$combined>median(full$combined, na.rm=T)
+
+
+q <- quantile(full$combined, probs = c(1/4, 3/4), na.rm=T)
+full$inc_bottom25 <- full$combined<=q[1]
+full$inc_top25 <- full$combined>q[2]
+
+
+
+q <- quantile(full$prop_women2, probs = c(1/3, 2/3), na.rm=T)
+full$div_bottom33 <- full$prop_women2<=q[1]
+full$div_top33 <- full$prop_women2>q[2]
+
+q <- quantile(full$prop_women2, probs = c(1/4, 3/4), na.rm=T)
+full$div_bottom25 <- full$prop_women2<=q[1]
+full$div_top25 <- full$prop_women2>q[2]
+
+q <- quantile(full$prop_women2, probs = c(1/10, 9/10), na.rm=T)
+full$div_bottom10 <- full$prop_women2<=q[1]
+full$div_top10 <- full$prop_women2>q[2]
+
+
+
+
+dist_div_rev_fulldata <- ggplot() +
+  
+stat_smooth(data=full[full$inc_top25==T,], aes(x=prop_women2, y=review), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.4, na.rm=TRUE, color="red", fill="red") +  
+  
+stat_smooth(data=full[full$inc_bottom25==T,], aes(x=prop_women2, y=review), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.4, na.rm=TRUE, color="black", fill="black") +
+  
+  #annotate(geom="text", x=.67,    y=73, label="Female prop.\nbelow median", lineheight = .8,  col=lo_label_color, size=3.3, hjust = 0, alpha = 1, angle = 0) +
+  #annotate(geom="text", x=.687,    y=63.1, label="Female prop.\nabove median", lineheight = .8,  col=hi_label_color, size=3.3, hjust = 0, alpha = 1, angle = 55) +
+
+  
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    #coord_cartesian(ylim=c(61,77), xlim=c(.633, .93)) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="P(Review)") +
+    labs(x="Diversity") +
+  
+  theme(aspect.ratio=1, 
+        legend.position = "none",
+        panel.grid.major = element_line(size=0.2), 
+        #panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.2),
+        #legend.position = c(0.2, 0.3),
+        plot.title = element_text(size = 11, face = "bold", colour = "black"),
+        #axis.ticks = element_line(colour = "black", size = 0.1),
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.text.x = element_text(size = 9, colour = "black"),
+        axis.text.y = element_text(size = 9, colour = "black"),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank()
+  )
+
+
+
+dist_div_rev_fulldata
+```
+
+
+
+
+Relationship btw distinctiveness and review score differs by diversity X
+inclusion, full dataset
+```{r, fig.width = 2.5, fig.height = 2.5}
+
+
+#-------------scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)-----------------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+lo_color = hi_color_1
+hi_color = hi_color_9
+
+lo_label_color = "#69629a"
+hi_label_color = "#4f4973"
+
+
+
+
+
+full$div_bottom50 <- full$prop_women2<=median(full$prop_women2, na.rm=T)
+full$div_top50 <- full$prop_women2>median(full$prop_women2, na.rm=T)
+
+q <- quantile(full$prop_women2, probs = c(1/3, 2/3), na.rm=T)
+full$div_bottom33 <- full$prop_women2<=q[1]
+full$div_top33 <- full$prop_women2>q[2]
+
+q <- quantile(full$prop_women2, probs = c(1/4, 3/4), na.rm=T)
+full$div_bottom25 <- full$prop_women2<=q[1]
+full$div_top25 <- full$prop_women2>q[2]
+
+q <- quantile(full$prop_women2, probs = c(1/10, 9/10), na.rm=T)
+full$div_bottom10 <- full$prop_women2<=q[1]
+full$div_top10 <- full$prop_women2>q[2]
+
+
+
+
+dist_div_rev_fulldata <- ggplot() +
+  
+stat_smooth(data=full[full$rank_avg>30 & full$div_top50==T,], aes(x=game_dist_prev5yr, y=rank_avg), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.4, na.rm=TRUE, color=hi_color, fill=hi_color) +  
+  
+stat_smooth(data=full[full$rank_avg>30 & full$div_bottom50==T,], aes(x=game_dist_prev5yr, y=rank_avg), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.4, na.rm=TRUE, color=lo_color, fill=lo_color) +
+  
+  annotate(geom="text", x=.67,    y=73, label="Female prop.\nbelow median", lineheight = .8,  col=lo_label_color, size=3.3, hjust = 0, alpha = 1, angle = 0) +
+  annotate(geom="text", x=.687,    y=63.1, label="Female prop.\nabove median", lineheight = .8,  col=hi_label_color, size=3.3, hjust = 0, alpha = 1, angle = 55) +
+
+  
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    coord_cartesian(ylim=c(61,77), xlim=c(.633, .93)) +
+    scale_y_continuous(expand = c(0,0)) +
+  
+    labs(y="Review") +
+    labs(x="Distinctiveness") +
+  
+  theme(aspect.ratio=1, 
+        legend.position = "none",
+        panel.grid.major = element_line(size=0.2), 
+        #panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.2),
+        #legend.position = c(0.2, 0.3),
+        plot.title = element_text(size = 11, face = "bold", colour = "black"),
+        #axis.ticks = element_line(colour = "black", size = 0.1),
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.text.x = element_text(size = 9, colour = "black"),
+        axis.text.y = element_text(size = 9, colour = "black"),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank()
+  )
+
+
+
+dist_div_rev_fulldata
+```
+
+
+
+
+Relationship btw distinctiveness and review score differs by diversity X
+inclusion, full dataset
+```{r, fig.width = 2.5, fig.height = 2.5}
+
+
+#-------------scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)-----------------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+lo_color = hi_color_1
+hi_color = hi_color_9
+
+lo_label_color = "#69629a"
+hi_label_color = "#4f4973"
+
+
+
+
+
+full$div_bottom50 <- full$prop_women2<=median(full$prop_women2, na.rm=T)
+full$div_top50 <- full$prop_women2>median(full$prop_women2, na.rm=T)
+
+q <- quantile(full$prop_women2, probs = c(1/3, 2/3), na.rm=T)
+full$div_bottom33 <- full$prop_women2<=q[1]
+full$div_top33 <- full$prop_women2>q[2]
+
+q <- quantile(full$prop_women2, probs = c(1/4, 3/4), na.rm=T)
+full$div_bottom25 <- full$prop_women2<=q[1]
+full$div_top25 <- full$prop_women2>q[2]
+
+q <- quantile(full$prop_women2, probs = c(1/10, 9/10), na.rm=T)
+full$div_bottom10 <- full$prop_women2<=q[1]
+full$div_top10 <- full$prop_women2>q[2]
+
+
+
+
+dist_div_prev_fulldata <- ggplot() +
+  
+stat_smooth(data=full[full$div_top50==T,], aes(x=game_dist_prev5yr, y=review), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.4, na.rm=TRUE, color=hi_color, fill=hi_color) +  
+  
+stat_smooth(data=full[full$div_bottom50==T,], aes(x=game_dist_prev5yr, y=review), method = "loess", formula = y ~ x, span=1, se = T,size=0.5, alpha=0.4, na.rm=TRUE, color=lo_color, fill=lo_color) +
+  
+  #annotate(geom="text", x=.67,    y=73, label="Female prop.\nbelow median", lineheight = .8,  col=lo_label_color, size=3.3, hjust = 0, alpha = 1, angle = 0) +
+  #annotate(geom="text", x=.687,    y=63.1, label="Female prop.\nabove median", lineheight = .8,  col=hi_label_color, size=3.3, hjust = 0, alpha = 1, angle = 55) +
+
+  
+    scale_x_continuous(expand = c(0,0), labels = dropLeadingZero) +
+    coord_cartesian(ylim=c(0.3,0.8), xlim=c(.633, .93)) +
+    scale_y_continuous(expand = c(0,0), labels = dropLeadingZero) +
+  
+    labs(y="P(Review)") +
+    labs(x="Distinctiveness") +
+  
+  theme(aspect.ratio=1, 
+        legend.position = "none",
+        panel.grid.major = element_line(size=0.2), 
+        #panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.2),
+        #legend.position = c(0.2, 0.3),
+        plot.title = element_text(size = 11, face = "bold", colour = "black"),
+        #axis.ticks = element_line(colour = "black", size = 0.1),
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.text.x = element_text(size = 9, colour = "black"),
+        axis.text.y = element_text(size = 9, colour = "black"),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank()
+  )
+
+
+
+dist_div_prev_fulldata
+```
+
+
+
+```{r}
+ggsave("dist_div_rev_fulldata.pdf", dist_div_rev_fulldata, width = 2.5, height = 2.5)
+```
+
+
+
+
+
+Relationship btw review score and sales differs by diversity X
+inclusion, filtered data
+
+```{r, fig.width = 2.5, fig.height = 2.5}
+
+
+#-------------scale_x_continuous(expand = c(0,0), labels = dropLeadingZero)-----------------------------
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+dropLeadingZero <- function(l){
+  str_replace(scaleFUN(l), '0.', '.')
+}
+#-------------------------------------------------------------------------------------------------------
+
+hi_color = hi_color_1
+lo_color = hi_color_9
+
+
+
+
+
+moby$div_bottom50 <- moby$prop_women2<=median(moby$prop_women2, na.rm=T)
+moby$div_top50 <- moby$prop_women2>median(moby$prop_women2, na.rm=T)
+
+q <- quantile(moby$prop_women2, probs = c(1/3, 2/3), na.rm=T)
+moby$div_bottom33 <- moby$prop_women2<=q[1]
+moby$div_top33 <- moby$prop_women2>q[2]
+
+q <- quantile(moby$prop_women2, probs = c(1/4, 3/4), na.rm=T)
+moby$div_bottom25 <- moby$prop_women2<=q[1]
+moby$div_top25 <- moby$prop_women2>q[2]
+
+q <- quantile(moby$prop_women2, probs = c(1/10, 9/10), na.rm=T)
+moby$div_bottom10 <- moby$prop_women2<=q[1]
+moby$div_top10 <- moby$prop_women2>q[2]
+
+
+
+
+rev_div_sales_mobydata <- ggplot() +
+  
+stat_smooth(data=moby[moby$rank_avg>30 & moby$div_top50==T,], aes(x=rank_avg, y=log_global_sales2_annual), 
+            method = "loess", 
+            #method = "lm",
+            formula = y ~ x, 
+            span=1, 
+            se = T,size=0.5, alpha=0.5, na.rm=TRUE, color=hi_color, fill=hi_color) +  
+  
+stat_smooth(data=moby[moby$rank_avg>30 & moby$div_bottom50==T,], aes(x=rank_avg, y=log_global_sales2_annual), 
+            method = "loess", 
+            #method = "lm",
+            formula = y ~ x, 
+            span=1, 
+            se = T, size=0.5, alpha=0.2, na.rm=TRUE, color=lo_color, fill=lo_color) +
+  
+  #annotate(geom="text", x=.66,    y=73, label="Female prop.\nlow 50%", lineheight = .8,  col=lo_color, size=3.5, hjust = 0, alpha = 1, angle = 0) +
+  #annotate(geom="text", x=.69,    y=62.5, label="Female prop.\nhigh 50%", lineheight = .8,  col=hi_color, size=3.5, hjust = 0, alpha = 1, angle = 55) +
+
+  
+    scale_x_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 5)) +
+    coord_cartesian(xlim=c(35,93), ylim=c(3.6, 4.9)) +
+    scale_y_continuous(expand = c(0,0), breaks = scales::pretty_breaks(n = 5)) +
+  
+    labs(y="Sales") +
+    labs(x="Review") +
+  
+  theme(aspect.ratio=1, 
+        legend.position = "none",
+        panel.grid.major = element_line(size=0.2), 
+        #panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.2),
+        #legend.position = c(0.2, 0.3),
+        plot.title = element_text(size = 11, face = "bold", colour = "black"),
+        #axis.ticks = element_line(colour = "black", size = 0.1),
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.text.x = element_text(size = 9, colour = "black"),
+        axis.text.y = element_text(size = 9, colour = "black"),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank()
+  )
+
+
+
+rev_div_sales_mobydata
+```
+Save environment
+```{r}
+save.image(file='Desc_bivar.RData')
+```
